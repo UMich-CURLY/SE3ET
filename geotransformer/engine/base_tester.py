@@ -18,6 +18,7 @@ def inject_default_parser(parser=None):
     parser.add_argument('--snapshot', default=None, help='load from snapshot')
     parser.add_argument('--test_epoch', type=int, default=None, help='test epoch')
     parser.add_argument('--test_iter', type=int, default=None, help='test iteration')
+    parser.add_argument('--cfg_file', type=str, default=None, help='overriding config file')
     return parser
 
 
@@ -26,6 +27,10 @@ class BaseTester(abc.ABC):
         # parser
         parser = inject_default_parser(parser)
         self.args = parser.parse_args()
+
+        # modify cfgs
+        if self.args.cfg_file is not None:
+            cfg.merge_from_file(self.args.cfg_file)
 
         # logger
         log_file = osp.join(cfg.log_dir, 'test-{}.log'.format(time.strftime('%Y%m%d-%H%M%S')))

@@ -63,6 +63,8 @@ The dataset can be downloaded from [PREDATOR](https://github.com/prs-eth/Overlap
                           |--...
 ```
 
+You may create symlink at `data/3DMatch/data` to the actual dataset path, and symlink at `output` to the path you want to save outputs and log files. 
+
 ### Training
 
 The code for 3DMatch is in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn`. Use the following command for training.
@@ -92,6 +94,8 @@ CUDA_VISIBLE_DEVICES=0 python eval.py --benchmark=3DMatch --method=lgr
 ```
 
 Replace `3DMatch` with `3DLoMatch` to evaluate on 3DLoMatch.
+
+Use `--cfg_file` option to point to a `yaml` config file to override the options in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn/config.py`. 
 
 ## Kitti odometry
 
