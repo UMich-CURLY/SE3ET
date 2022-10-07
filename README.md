@@ -1,44 +1,31 @@
 # Geometric Transformer for Fast and Robust Point Cloud Registration
 
-PyTorch implementation of the paper:
+We modify the PyTorch implementation of GeoTransformer:
 
 [Geometric Transformer for Fast and Robust Point Cloud Registration](https://arxiv.org/abs/2202.06688).
 
 [Zheng Qin](https://scholar.google.com/citations?user=DnHBAN0AAAAJ), [Hao Yu](https://scholar.google.com/citations?user=g7JfRn4AAAAJ), Changjian Wang, [Yulan Guo](https://scholar.google.com/citations?user=WQRNvdsAAAAJ), Yuxing Peng, and [Kai Xu](https://scholar.google.com/citations?user=GuVkg-8AAAAJ).
 
-## Introduction
-
-We study the problem of extracting accurate correspondences for point cloud registration. Recent keypoint-free methods bypass the detection of repeatable keypoints which is difficult in low-overlap scenarios, showing great potential in registration. They seek correspondences over downsampled superpoints, which are then propagated to dense points. Superpoints are matched based on whether their neighboring patches overlap. Such sparse and loose matching requires contextual features capturing the geometric structure of the point clouds. We propose Geometric Transformer to learn geometric feature for robust superpoint matching. It encodes pair-wise distances and triplet-wise angles, making it robust in low-overlap cases and invariant to rigid transformation. The simplistic design attains surprisingly high matching accuracy such that no RANSAC is required in the estimation of alignment transformation, leading to $100$ times acceleration. Our method improves the inlier ratio by $17\% \sim 30\%$ and the registration recall by over $7\%$ on the challenging 3DLoMatch benchmark.
-
-![](assets/teaser.png)
-
-## News
-
-2022.03.30: Code and pretrained models on KITTI and ModelNet40 release.
-
-2022.03.29: This work is selected for an **ORAL** presentation at CVPR 2022.
-
-2022.03.02: This work is accepted by CVPR 2022. Code and Models on ModelNet40 and KITTI will be released soon.
-
-2022.02.15: Paper is available at [arXiv](https://arxiv.org/abs/2202.06688).
-
-2022.02.14: Code and pretrained model on 3DMatch/3DLoMatch release.
 
 ## Installation
 
 Please use the following command for installation.
 
-```bash
-# It is recommended to create a new environment
-conda create -n geotransformer python==3.8
-conda activate geotransformer
-
-# [Optional] If you are using CUDA 11.0 or newer, please install `torch==1.7.1+cu110`
-pip install torch==1.7.1+cu110 -f https://download.pytorch.org/whl/torch_stable.html
-
-# Install packages and other dependencies
-pip install -r requirements.txt
+Build docker environment
+```
+cd docker
+docker build --tag umcurly/geotransformer .
+bash build_docker_container.bash [container_name]
+cd ..
+```
+Build extension package for GeoTransformer
+```
 python setup.py build develop
+```
+Build extension package for E2PN
+```
+cd vgtk
+python setup.py build_ext -i
 ```
 
 Code has been tested with Ubuntu 20.04, GCC 9.3.0, Python 3.8, PyTorch 1.7.1, CUDA 11.1 and cuDNN 8.1.0.
@@ -66,6 +53,13 @@ The dataset can be downloaded from [PREDATOR](https://github.com/prs-eth/Overlap
 ### Training
 
 The code for 3DMatch is in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn`. Use the following command for training.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python trainval.py
+```
+#### Training with E2PN
+
+The code for 3DMatch is in `experiments/geotransformer.3dmatch.e2pn`. Use the following command for training.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python trainval.py
