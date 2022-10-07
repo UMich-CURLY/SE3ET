@@ -61,7 +61,7 @@ _C.eval.rte_threshold = 0.3
 # ransac
 _C.ransac = edict()
 _C.ransac.distance_threshold = 0.05
-_C.ransac.num_points = 3
+_C.ransac.num_points = 12
 _C.ransac.num_iterations = 1000
 
 # optim
@@ -91,7 +91,7 @@ _C.backbone.output_dim = 256
 # epn
 _C.epn = edict()
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false
-_C.epn.kanchor = 3 # number of rotation anchors A
+_C.epn.kanchor = 12 # number of rotation anchors A
 _C.epn.att_pooling = False # early fusion with attentive averge pooling
 _C.epn.att_permute = False # early fusion with soft permutation
 _C.epn.dual_feature = False # use both permutation and max pooling as the invariant layer

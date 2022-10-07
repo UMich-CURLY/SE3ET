@@ -353,9 +353,15 @@ class KPConvInterSO3(nn.Module):
         # Add a zero feature for shadow neighbors
         x = torch.cat((x, torch.zeros_like(x[:1, :])), 0)
 
+        # print('x', x.shape)
+        # print('new_neighb_inds', new_neighb_inds.shape)
+
         # Get the features of each neighborhood 
         # [n_points, a, in_fdim] -> [n_points, n_neighbors, a, in_fdim]
-        neighb_x = gather(x, new_neighb_inds)
+        neighb_x = gather(x, new_neighb_inds) #.unsqueeze(-1)
+
+        # print('neighb_x', neighb_x.shape)
+        # print('all_weights', all_weights.shape)
 
         if self.non_sep_conv:
             weighted_features = torch.einsum('pnac,pnkb->pkbac', neighb_x, all_weights) # kb aere the rotated kernel points
@@ -573,6 +579,8 @@ class UnaryBlockEPN(nn.Module):
 
     def forward(self, x, batch=None):
         np, na, nc = x.shape
+        print('UnaryBlockEPN x input', x.shape)
+        print('UnaryBlockEPN self.in_dim', self.in_dim, 'self.out_dim', self.out_dim)
         x = self.mlp(x) #.reshape(np, na, self.out_dim)
         x = self.batch_norm(x)
         if not self.no_relu:
@@ -672,6 +680,7 @@ class SimpleBlockEPN(nn.Module):
 
     def forward(self, x, q_pts, s_pts, neighb_inds):
         x = self.interso3(x, q_pts, s_pts, neighb_inds)
+        print('SimpleBlockEPN x1', x.shape)
         if not self.non_sep_conv:
             x = self.intraso3(x)
         return x
