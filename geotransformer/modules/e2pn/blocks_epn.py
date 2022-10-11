@@ -7,7 +7,6 @@ from torch.nn.parameter import Parameter
 from torch.nn.init import kaiming_uniform_
 from geotransformer.modules.e2pn.kernel_points import load_kernels
 
-# from lib.ply import write_ply
 import geotransformer.modules.e2pn.anchors as L
 from geotransformer.modules.e2pn.blocks import radius_gaussian, gather, max_pool, KPConv, BatchNormBlock
 import torch.nn.functional as F
@@ -130,13 +129,17 @@ class KPConvInterSO3(nn.Module):
     def init_anchors(self):
         # get so3 anchors (60x3x3 rotation matrices)
         if self.quotient_factor == 1:
-            # anchors = L.get_anchors(self.kanchor)
-            anchors = L.get_anchorsV()
+            if self.kanchor == 12 or self.kanchor == 60:
+                anchors = L.get_anchorsV()
+            else:
+                anchors = L.get_anchors(self.kanchor)
         else:
-            # anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
-            anchors = L.get_anchorsV()
-            # quotient_anchors = L.get_anchors(self.quotient_factor)
-            quotient_anchors = L.get_anchorsV()
+            if self.kanchor == 12 or self.kanchor == 60:
+                anchors = L.get_anchorsV()
+                quotient_anchors = L.get_anchorsV()
+            else:
+                anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
+                quotient_anchors = L.get_anchors(self.quotient_factor)
             self.quotient_anchors = Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
                          requires_grad=False)
         return Parameter(torch.tensor(anchors, dtype=torch.float32),
@@ -196,6 +199,7 @@ class KPConvInterSO3(nn.Module):
         return
 
     def init_permute_idxs_rots(self):
+        # print('self.anchors', self.anchors.shape)
         rot_anchors = torch.einsum('aij,bjk->abik', self.anchors, self.anchors)
         if self.quotient_factor == 1:
             diff_r = torch.einsum('cij,abik->cabjk', self.anchors, rot_anchors)
@@ -310,10 +314,10 @@ class KPConvInterSO3(nn.Module):
         if self.deformable:
             pass
         else:
-            deformed_K_points = self.kernel_points
+            deformed_K_points = self.kernel_points # nk, 3 = 15, 3
         
         # rotation (60(na)*3*3, 24(nk)*3 ->60na*3*24nk->nk*na*3)
-        rotated_kernels = torch.matmul(self.anchors, deformed_K_points.transpose(0,1)).permute(2,0,1).contiguous()
+        rotated_kernels = torch.matmul(self.anchors, deformed_K_points.transpose(0,1)).permute(2,0,1).contiguous() # nk, na, 3 = 15 x 60 x 3
 
         # Get all difference matrices [n_points, n_neighbors, n_kpoints, na, dim]
         neighbors = neighbors.unsqueeze(2).unsqueeze(2)
@@ -348,25 +352,21 @@ class KPConvInterSO3(nn.Module):
         if self.deformable:
             pass
         else:
-            new_neighb_inds = neighb_inds
+            new_neighb_inds = neighb_inds # N x nn
 
         # Add a zero feature for shadow neighbors
-        x = torch.cat((x, torch.zeros_like(x[:1, :])), 0)
-
-        # print('x', x.shape)
-        # print('new_neighb_inds', new_neighb_inds.shape)
+        x = torch.cat((x, torch.zeros_like(x[:1, :])), 0) # N+1 x a x dim
 
         # Get the features of each neighborhood 
         # [n_points, a, in_fdim] -> [n_points, n_neighbors, a, in_fdim]
-        neighb_x = gather(x, new_neighb_inds) #.unsqueeze(-1)
-
-        # print('neighb_x', neighb_x.shape)
-        # print('all_weights', all_weights.shape)
+        neighb_x = gather(x, new_neighb_inds)
 
         if self.non_sep_conv:
             weighted_features = torch.einsum('pnac,pnkb->pkbac', neighb_x, all_weights) # kb aere the rotated kernel points
         else:
-            # n_points, n_kpoints, na, in_fdim (kpac)
+            # weighted_features: n_points, n_kpoints, na, in_fdim (pkac) = 20000, 15, 60, 1
+            # neighb_x: n_points, n_neighbors, na, in_fdim (pnac) = 20000, 26, 60, 1
+            # all_weights: n_points, n_neighbors, n_kpoints, na (pnka) = 20000, 26, 15, 60
             weighted_features = torch.einsum('pnac,pnka->pkac', neighb_x, all_weights)
         weighted_features = weighted_features.transpose(0,1)
         return weighted_features
@@ -388,11 +388,11 @@ class KPConvInterSO3(nn.Module):
         ######################
 
         # Add a fake point in the last row for shadow neighbors
-        s_pts = torch.cat((s_pts, torch.zeros_like(s_pts[:1, :]) + 1e6), 0) # TODO: 
+        s_pts = torch.cat((s_pts, torch.zeros_like(s_pts[:1, :]) + 1e6), 0)
 
         # Get neighbor points [n_points, n_neighbors, dim]
         # s_pts: n*dim, neighb_inds: n*nn, neighbors: n*nn*dim (use multi-dim index on a single dim)
-        neighbors = s_pts[neighb_inds, :]
+        neighbors = s_pts[neighb_inds, :] # N x nn x dim, nn=26
 
         # Center every neighborhood
         neighbors = neighbors - q_pts.unsqueeze(1)
@@ -498,8 +498,10 @@ class KPConvIntraSO3(nn.Module):
 
     def init_anchors(self):
         # get so3 anchors (60x3x3 rotation matrices)
-        # anchors = L.get_anchors(self.kanchor)
-        anchors = L.get_anchorsV()
+        if self.kanchor == 12 or self.kanchor == 60:
+            anchors = L.get_anchors(self.kanchor)
+        else:
+            anchors = L.get_anchorsV()
         return Parameter(torch.tensor(anchors, dtype=torch.float32),
                          requires_grad=False)
 
@@ -579,8 +581,6 @@ class UnaryBlockEPN(nn.Module):
 
     def forward(self, x, batch=None):
         np, na, nc = x.shape
-        print('UnaryBlockEPN x input', x.shape)
-        print('UnaryBlockEPN self.in_dim', self.in_dim, 'self.out_dim', self.out_dim)
         x = self.mlp(x) #.reshape(np, na, self.out_dim)
         x = self.batch_norm(x)
         if not self.no_relu:
@@ -671,16 +671,15 @@ class SimpleBlockEPN(nn.Module):
         self.use_bn = config.use_batch_norm
         self.block_name = block_name
         self.in_dim = in_dim
-        self.out_dim = out_dim // 2
+        self.out_dim = out_dim
         self.non_sep_conv = config.non_sep_conv
 
-        self.interso3 = KPConvInterSO3Block(block_name, in_dim, self.out_dim, radius, config)
+        self.interso3 = KPConvInterSO3Block(block_name, self.in_dim, self.out_dim, radius, config)
         if not self.non_sep_conv:
             self.intraso3 = KPConvIntraSO3Block(block_name, self.out_dim, self.out_dim, config)
 
     def forward(self, x, q_pts, s_pts, neighb_inds):
         x = self.interso3(x, q_pts, s_pts, neighb_inds)
-        print('SimpleBlockEPN x1', x.shape)
         if not self.non_sep_conv:
             x = self.intraso3(x)
         return x
@@ -774,13 +773,17 @@ class InvOutBlockEPN(nn.Module):
     def init_anchors(self):
         # get so3 anchors (60x3x3 rotation matrices)
         if self.quotient_factor == 1:
-            # anchors = L.get_anchors(self.kanchor)
-            anchors = L.get_anchorsV()
+            if self.kanchor == 12 or self.kanchor == 60:
+                anchors = L.get_anchorsV()
+            else:
+                anchors = L.get_anchors(self.kanchor)
         else:
-            # anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
-            anchors = L.get_anchorsV()
-            # quotient_anchors = L.get_anchors(self.quotient_factor)
-            quotient_anchors = L.get_anchorsV()
+            if self.kanchor == 12 or self.kanchor == 60:
+                anchors = L.get_anchorsV()
+                quotient_anchors = L.get_anchorsV()
+            else:
+                anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
+                quotient_anchors = L.get_anchors(self.quotient_factor)
             self.quotient_anchors = Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
                          requires_grad=False)
         return Parameter(torch.tensor(anchors, dtype=torch.float32),
@@ -814,7 +817,7 @@ class LiftBlockEPN(nn.Module):
         self.in_dim = in_dim
         self.kanchor = config.kanchor
 
-    def forward(self, x, q_pts, s_pts, neighb_inds):
+    def forward(self, x):
         np, nc = x.shape                # p,a,c
         x = x.unsqueeze(1).expand(-1, self.kanchor, -1)
         return x

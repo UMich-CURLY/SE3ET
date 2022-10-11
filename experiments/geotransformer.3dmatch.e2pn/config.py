@@ -38,7 +38,7 @@ _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 30000
+_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
@@ -91,18 +91,18 @@ _C.backbone.output_dim = 256
 # epn
 _C.epn = edict()
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false
-_C.epn.kanchor = 12 # number of rotation anchors A
+_C.epn.kanchor = 3 #12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 _C.epn.att_pooling = False # early fusion with attentive averge pooling
 _C.epn.att_permute = False # early fusion with soft permutation
 _C.epn.dual_feature = False # use both permutation and max pooling as the invariant layer
 _C.epn.ctrness_w_track = False # use the max pooling feature to regress centerness noise free kernel
-_C.epn.equiv_mode_kp = False # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
-_C.epn.non_sep_conv = False # full (non-separable) conv
+_C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
+_C.epn.non_sep_conv = False # full (non-separable) conv; True: E2PN, False: EPN
 _C.epn.rot_by_permute = False # rotate-by-permute in full conv
 _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
 _C.epn.rot_head_attn = False # late fusion with attention weight. Need to remove 'inv_epn' to enable late fusion. 
 _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
-_C.epn.gather_by_idxing = False # efficient gathering
+_C.epn.gather_by_idxing = False # efficient gathering, False for default, True for faster
 _C.epn.use_batch_norm = True # Batch normalization parameters
 _C.epn.batch_norm_momentum = 0.99 # Batch normalization parameters
 _C.epn.num_kernel_points = 15 # Number of kernel points
@@ -112,7 +112,7 @@ _C.epn.deform_radius = 5.0 # Radius of deformable convolution in "number grid ce
 _C.epn.KP_extent = 1.0 # Kernel point influence radius
 _C.epn.KP_influence = 'linear' # Influence function when d < KP_extent. ('constant', 'linear', 'gaussian') When d > KP_extent, always zero
 _C.epn.aggregation_mode = 'sum' # Aggregation function of KPConv in ('closest', 'sum') # Decide if you sum all kernel point influences, or if you only take the influence of the closest KP
-_C.epn.fixed_kernel_points = 'center' # Fixed points in the kernel : 'none', 'center' or 'verticals' # 'verticals' combined with equiv_mode_kp=True results in z-axis symmetric kernel
+_C.epn.fixed_kernel_points = 'verticals' # 'center' for KPConv, # Fixed points in the kernel : 'none', 'center' or 'verticals' # 'verticals' combined with equiv_mode_kp=True results in z-axis symmetric kernel
 _C.epn.modulated = False # Use modulateion in deformable convolutions
 
 # model - Global
