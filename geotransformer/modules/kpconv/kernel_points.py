@@ -386,7 +386,7 @@ def kernel_point_optimization_debug(
     return kernel_points * radius, saved_gradient_norms
 
 
-def load_kernels(radius, num_kpoints, dimension, fixed, lloyd=False):
+def load_kernels(radius, num_kpoints, dimension, fixed, lloyd=False, equiv_mode=False):
     # Kernel directory
     # kernel_dir = osp.join('kernels', 'dispositions')
     kernel_dir = osp.join(osp.dirname(osp.abspath(__file__)), 'dispositions')
@@ -409,7 +409,8 @@ def load_kernels(radius, num_kpoints, dimension, fixed, lloyd=False):
             # Create kernels
             kernel_points, grad_norms = kernel_point_optimization_debug(
                 1.0, num_kpoints, num_kernels=100, dimension=dimension, fixed=fixed, verbose=0
-            )
+            )### kernel output of this func has radius around 0.66 due to the ratio parameter
+            ### not exact for each row because the normalization are using a shared factor for all rows
             # Find best candidate
             best_k = np.argmin(grad_norms[-1, :])
 
@@ -423,33 +424,34 @@ def load_kernels(radius, num_kpoints, dimension, fixed, lloyd=False):
         pcd = o3d.io.read_point_cloud(kernel_file)
         kernel_points = np.array(pcd.points).astype(np.float32)
 
-    # Random roations for the kernel
-    # N.B. 4D random rotations not supported yet
-    R = np.eye(dimension)
-    theta = np.random.rand() * 2 * np.pi
-    if dimension == 2:
-        if fixed != 'vertical':
-            c, s = np.cos(theta), np.sin(theta)
-            R = np.array([[c, -s], [s, c]], dtype=np.float32)
-    elif dimension == 3:
-        if fixed != 'vertical':
-            c, s = np.cos(theta), np.sin(theta)
-            R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
-        else:
-            phi = (np.random.rand() - 0.5) * np.pi
-            # Create the first vector in carthesian coordinates
-            u = np.array([np.cos(theta) * np.cos(phi), np.sin(theta) * np.cos(phi), np.sin(phi)])
-            # Choose a random rotation angle
-            alpha = np.random.rand() * 2 * np.pi
-            # Create the rotation matrix with this vector and angle
-            R = create_3D_rotations(np.reshape(u, (1, -1)), np.reshape(alpha, (1, -1)))[0]
-            R = R.astype(np.float32)
+    if not equiv_mode:
+        # Random roations for the kernel
+        # N.B. 4D random rotations not supported yet
+        R = np.eye(dimension)
+        theta = np.random.rand() * 2 * np.pi
+        if dimension == 2:
+            if fixed == 'verticals':
+                c, s = np.cos(theta), np.sin(theta)
+                R = np.array([[c, -s], [s, c]], dtype=np.float32)
+        elif dimension == 3:
+            if fixed == 'verticals':
+                c, s = np.cos(theta), np.sin(theta)
+                R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
+            else:
+                phi = (np.random.rand() - 0.5) * np.pi
+                # Create the first vector in carthesian coordinates
+                u = np.array([np.cos(theta) * np.cos(phi), np.sin(theta) * np.cos(phi), np.sin(phi)])
+                # Choose a random rotation angle
+                alpha = np.random.rand() * 2 * np.pi
+                # Create the rotation matrix with this vector and angle
+                R = create_3D_rotations(np.reshape(u, (1, -1)), np.reshape(alpha, (1, -1)))[0]
+                R = R.astype(np.float32)
 
-    # Add a small noise
-    kernel_points = kernel_points + np.random.normal(scale=0.01, size=kernel_points.shape)
+        # Add a small noise
+        kernel_points = kernel_points + np.random.normal(scale=0.01, size=kernel_points.shape)
+        # Rotate kernels
+        kernel_points = np.matmul(kernel_points, R)
     # Scale kernels
     kernel_points = radius * kernel_points
-    # Rotate kernels
-    kernel_points = np.matmul(kernel_points, R)
 
     return kernel_points.astype(np.float32)
