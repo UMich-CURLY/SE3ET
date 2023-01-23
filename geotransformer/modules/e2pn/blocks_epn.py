@@ -5,9 +5,11 @@ import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
 from torch.nn.init import kaiming_uniform_
-from geotransformer.modules.e2pn.kernel_points import load_kernels
 
-import geotransformer.modules.e2pn.anchors as L
+import geotransformer.modules.transformer.utils_epn.anchors as L
+from geotransformer.modules.kpconv.kernel_points import load_kernels
+# from geotransformer.modules.e2pn.kernel_points import load_kernels
+# import geotransformer.modules.e2pn.anchors as L
 from geotransformer.modules.e2pn.blocks import radius_gaussian, gather, max_pool, KPConv, BatchNormBlock
 import torch.nn.functional as F
 
@@ -109,43 +111,56 @@ class KPConvInterSO3(nn.Module):
         Initialize the kernel point positions in a sphere
         :return: the tensor of kernel points
         """
-        if self.epn_kernel:
-            # # NOTE: Predator scales loaded kernel with radius, and the kernel points are added with noise and randomly rotated. 
-            # KERNEL_CONDENSE_RATIO = 0.7
-            # K_points_numpy = L.get_sphereical_kernel_points_from_ply(KERNEL_CONDENSE_RATIO * self.radius, self.kernel_size)
-            raise NotImplementedError
-        else:
-            # Create one kernel disposition (as numpy array). Choose the KP distance to center thanks to the KP extent
+        # Create one kernel disposition (as numpy array). Choose the KP distance to center thanks to the KP extent
+        if self.kanchor < 10:
             K_points_numpy = load_kernels(self.radius,
-                                        self.K,
-                                        dimension=self.p_dim,
-                                        fixed=self.fixed_kernel_points,
-                                        equiv_mode=self.equiv_mode_kp,
-                                        )
+                                    self.K,
+                                    dimension=3,
+                                    fixed='verticals',
+                                    equiv_mode=self.equiv_mode_kp,
+                                    )
+        else:
+            assert self.K == 13, self.K
+            vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
+            K_points_numpy = vs * 0.66 * self.radius
+            K_points_numpy = np.concatenate([K_points_numpy, np.array([[0,0,0]], dtype=K_points_numpy.dtype)], axis=0)    # 13*3
+    
+        # ### can print the kernel points coordinates
+        # print('K_points_numpy', K_points_numpy)
         # nk*3
-        return Parameter(torch.tensor(K_points_numpy, dtype=torch.float32),
+        return nn.Parameter(torch.tensor(K_points_numpy, dtype=torch.float32),
                          requires_grad=False)
+
 
     def init_anchors(self):
         # get so3 anchors (60x3x3 rotation matrices)
         if self.quotient_factor == 1:
-            if self.kanchor == 12 or self.kanchor == 60:
-                anchors = L.get_anchorsV()
-            else:
+            if self.kanchor < 10:
+                ### EPN mode for SO(2)
                 anchors = L.get_anchors(self.kanchor)
-        else:
-            if self.kanchor == 12 or self.kanchor == 60:
-                anchors = L.get_anchorsV()
-                quotient_anchors = L.get_anchorsV()
             else:
+                ### EPN mode for SO(3)
+                assert self.kanchor == 60, self.kanchor
+                anchors = L.get_anchorsV()
+        else:
+            if self.kanchor < 10:
+                ### E2PN mode for SO(2)
                 anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
                 quotient_anchors = L.get_anchors(self.quotient_factor)
-            self.quotient_anchors = Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
-                         requires_grad=False)
-        return Parameter(torch.tensor(anchors, dtype=torch.float32),
+                self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
+                            requires_grad=False)
+            else:
+                ### E2PN mode for SO(3)
+                assert self.kanchor == 12, self.kanchor
+                assert self.quotient_factor == 5, self.quotient_factor
+                anchors = L.get_anchorsV().reshape(12, 5, 3, 3)[:, 0]
+                quotient_anchors = L.get_anchors(self.quotient_factor)
+                self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
+                            requires_grad=False)
+
+        return nn.Parameter(torch.tensor(anchors, dtype=torch.float32),
                          requires_grad=False)
 
-    # def init_permute_idxs(self):
 
     def init_permute_idxs_kpts(self):
         # self.anchors # a*3*3

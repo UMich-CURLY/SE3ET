@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from IPython import embed
 
 from geotransformer.modules.kpconv import nearest_upsample
 from geotransformer.modules.e2pn.blocks_epn import LiftBlockEPN, SimpleBlockEPN, ResnetBottleneckBlockEPN, UnaryBlockEPN, LastUnaryBlockEPN
@@ -38,6 +37,7 @@ class E2PN(nn.Module):
         subsampling_list = data_dict['subsampling']
         upsampling_list = data_dict['upsampling']
 
+        print('points_list[0]', points_list[0].shape, points_list[0])
         feats_s1 = feats # N x 1 # points_list[0]: N x 3
         feats_s1 = self.preprocess(feats_s1) # N x kanchor x 1
         feats_s1 = self.encoder1_1(feats_s1, points_list[0], points_list[0], neighbors_list[0]) # N x kanchor x init_dim

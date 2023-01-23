@@ -15,9 +15,11 @@ dropout = None
 activation_fn = 'ReLU'
 na = 12
 
-
+# r: rotation, a: anchor, self, cross_a_soft, self, cross_r_soft, invariant, self, cross_non_equivariant = false
 blocks = ['cross_r_soft', 'self_eq', 'cross_eq', 'cross_a_soft', 'cross_a_best', 'cross_r_best']
+# which one is reference, '0', 1 map to 0, dual early: cat features from two point cloud, before pooling 
 align_modes = ['0', '1', 'dual_early', 'dual_late']
+# permutation anchor index
 alternative_impls = [True, False]
 
 vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()

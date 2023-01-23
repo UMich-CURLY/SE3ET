@@ -90,8 +90,23 @@ _C.backbone.output_dim = 256
 
 # epn
 _C.epn = edict()
+# ======== SO(2) ======== 
+### Valid parameters: kanchor < 10, quotient_factor >= 1, k = 15
+_C.epn.kanchor = 3 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+_C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
+_C.epn.num_kernel_points = 15 # Number of kernel points
+# ======== E2PN ======== 
+### Valid parameter set 1: kanchor = 12, quotient_factor  = 5, k = 13
+# _C.epn.kanchor = 12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+# _C.epn.quotient_factor = 5 # > 1 enables quotient features. 2 results in C6/C2. 
+# _C.epn.num_kernel_points = 13 # Number of kernel points
+# ======== EPN ======== 
+### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
+# _C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+# _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
+# _C.epn.num_kernel_points = 13 # Number of kernel points
+# ========
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false
-_C.epn.kanchor = 3 #12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 _C.epn.att_pooling = False # early fusion with attentive averge pooling
 _C.epn.att_permute = False # early fusion with soft permutation
 _C.epn.dual_feature = False # use both permutation and max pooling as the invariant layer
@@ -99,13 +114,11 @@ _C.epn.ctrness_w_track = False # use the max pooling feature to regress centerne
 _C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
 _C.epn.non_sep_conv = False # full (non-separable) conv; True: E2PN, False: EPN
 _C.epn.rot_by_permute = False # rotate-by-permute in full conv
-_C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
 _C.epn.rot_head_attn = False # late fusion with attention weight. Need to remove 'inv_epn' to enable late fusion. 
 _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
 _C.epn.gather_by_idxing = False # efficient gathering, False for default, True for faster
 _C.epn.use_batch_norm = True # Batch normalization parameters
 _C.epn.batch_norm_momentum = 0.99 # Batch normalization parameters
-_C.epn.num_kernel_points = 15 # Number of kernel points
 _C.epn.first_subsampling_dl = 0.02 # Size of the first subsampling grid in meter
 _C.epn.conv_radius = 2.5 # Radius of convolution in "number grid cell". (2.5 is the standard value) 
 _C.epn.deform_radius = 5.0 # Radius of deformable convolution in "number grid cell". Larger so that deformed kernel can spread out

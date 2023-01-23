@@ -5,8 +5,8 @@ import os
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 ### when debugging
-import sys
-sys.path.append(os.path.join(cur_dir,'../../../') )   # if vgtk is only build_ext but not installed
+# import sys
+# sys.path.append(os.path.join(cur_dir,'../../../') )   # if vgtk is only build_ext but not installed
 
 import geotransformer.modules.e2pn.rotation as fr
 

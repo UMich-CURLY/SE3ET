@@ -145,7 +145,7 @@ class RPEConditionalTransformer(nn.Module):
             feats0_inv = _gather_impl(feats0, attn_w1, self.alternative_impl)
         else:
             raise ValueError(f'self.align_mode {self.align_mode} not recognized')
-        ### compress
+        ### compress: equivariant to invariant
         feats0_inv = self.rotcompress(feats0_inv)
         feats1_inv = self.rotcompress(feats1_inv)
         if self.align_mode == 'dual_late':
