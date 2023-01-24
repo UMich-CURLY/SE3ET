@@ -198,7 +198,7 @@ if __name__ == '__main__':
                                       [0, 0, 1]])
     
     # oxford
-    oxford_pointcloud = np.fromfile(str("/home/cel/data/benchmark_datasets/oxford/2014-11-14-16-34-33/pointcloud_20m/1415985079644122.bin"), dtype=np.float64, count=-1).reshape([-1, 3])
+    oxford_pointcloud = np.fromfile(str("test_pointcloud.bin"), dtype=np.float64, count=-1).reshape([-1, 3])
     
     # downsample if GPU out of memory
     if cfg.epn.kanchor == 60:
