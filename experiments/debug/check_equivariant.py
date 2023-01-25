@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import open3d as o3d
 from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock
+from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices
 
 from config import make_cfg
 cfg = make_cfg()
@@ -33,7 +34,7 @@ class SO3ConvModel(nn.Module):
         dropout_rate = 0
         temperature = 3
         so3_pooling = 'attention'
-        input_radius = 0.4
+        input_radius = 0.4 #seems like the input actually has input radius 1?
         kpconv = False
 
         na = 1 if kpconv else cfg.epn.kanchor
@@ -183,20 +184,101 @@ def visualize_points(points, color, vis=False):
         o3d.visualization.draw_geometries([pcd])
     return pcd
 
+def find_rotation_correspondence(rot_anchors_1, rot_anchors_2):
+    rot_diff_mat = torch.einsum('aij,bkj->abik', rot_anchors_1, rot_anchors_2)
+    rot_diff = torch.einsum('abii->ab', rot_diff_mat)
+    rot_diff_acos = (rot_diff - 1) / 2
+    rot_diff_acos_max, rot_diff_acos_max_idx = rot_diff_acos.max(1)
+    # rot_diff_acos_max: if matched, should be 1
+    print('Acos should be 1 if aligned:', rot_diff_acos_max)
+    # rot_diff_acos_max_idx: idx of the best match in 2 for each of 1
+    print('The best alignment index:', rot_diff_acos_max_idx)
+    return rot_diff_acos_max, rot_diff_acos_max_idx
+
+def find_point_correspondence(pts_1, pts_2):
+    pts_1 = pts_1[:,None]   # n*1*3
+    pts_2 = pts_2[None]     # 1*n*3
+    rot_diff_mat = pts_1 - pts_2
+    rot_diff = torch.linalg.vector_norm(rot_diff_mat, dim=2)
+    rot_diff_min, rot_diff_min_idx = rot_diff.min(1)
+    # rot_diff_min: if matched, should be 1
+    print('Diff should be 0 if aligned:', rot_diff_min)
+    # rot_diff_min_idx: idx of the best match in 2 for each of 1
+    print('The best alignment index:', rot_diff_min_idx)
+    return rot_diff_min, rot_diff_min_idx
 
 if __name__ == '__main__':
     ################
     ## INPUT DATA ##
     ################
-    # rotate 72 degree along z axis for kanchor = 60, rotate 120 degree along z axis for kanchor = 12
+
+    ############## Load anchors
+    rot_anchors_face = torch.Tensor(get_anchors())
+    rot_anchors_vtx = torch.Tensor(get_anchorsV())
+    s2_coordinate, _, _, _, _ = get_icosahedron_vertices()
+    s2_coordinate = torch.Tensor(s2_coordinate)
+    print('Check that two sets of rotation anchors are not equal:')
+    rot_diff_acos_max, rot_diff_acos_max_idx = find_rotation_correspondence(rot_anchors_face, rot_anchors_vtx)
+
+    ### optionally print out the anchors
+    # for i in range(20):
+    #     print('rot_anchors_face %d'%i, rot_anchors_face[i*3:i*3+3])
+    # for i in range(12):
+    #     print('rot_anchors_vtx %d'%i, rot_anchors_vtx[i*5:i*5+5])
+
     if cfg.epn.kanchor == 60:
-        theta_1 = torch.Tensor([2 * torch.pi / 5])
+        rot_anchors = rot_anchors_face
     elif cfg.epn.kanchor == 12:
-        theta_1 = torch.Tensor([2 * torch.pi / 3])
-    rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
-                                      [torch.sin(theta_1), torch.cos(theta_1), 0],
-                                      [0, 0, 1]])
-    
+        rot_anchors = rot_anchors_vtx
+    elif cfg.epn.kanchor == 3:
+        # rot_anchors = torch.Tensor(get_anchors(3))
+        ### but EPN/E2PN in the EPN repo has not implemented kanchor=3
+        raise NotImplementedError('EPN/E2PN in the EPN repo has not implemented kanchor=3')
+    print('------------------------')
+    #################################
+
+    ############## Load a test rotation
+    load_test_rotation_from_anchors = True # True or False, both are fine
+    if load_test_rotation_from_anchors:
+        rot_idx = np.random.randint(60)
+        print('Load rotation from anchor', rot_idx)
+        rotation_matrix_1 = torch.Tensor(rot_anchors[rot_idx])
+    else:
+        # rotate 120 degree along x axis for kanchor = 60
+        # rotate 72 degree along z axis for kanchor = 12
+        # rotate 120 degree along z axis for kanchor = 3
+        print('Load rotation manually')
+        if cfg.epn.kanchor == 60:
+            theta_1 = torch.Tensor([2 * torch.pi / 3])
+            rotation_matrix_1 = torch.Tensor([[1, 0, 0],
+                                            [0, torch.cos(theta_1), -torch.sin(theta_1)],
+                                            [0, torch.sin(theta_1), torch.cos(theta_1)],])
+        elif cfg.epn.kanchor == 12:
+            theta_1 = torch.Tensor([2 * torch.pi / 5])
+            rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
+                                            [torch.sin(theta_1), torch.cos(theta_1), 0],
+                                            [0, 0, 1]])
+        elif cfg.epn.kanchor == 3:
+            theta_1 = torch.Tensor([2 * torch.pi / 3])
+            rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
+                                            [torch.sin(theta_1), torch.cos(theta_1), 0],
+                                            [0, 0, 1]])
+
+    print('Test rotation:\n', rotation_matrix_1)
+    print('Check that the rotation aligns anchors:')
+    if cfg.epn.kanchor == 60:
+        ### anchors are rotations in SO(3)
+        anchors_after_rotations = torch.matmul(rotation_matrix_1, rot_anchors)
+        best_align_value, best_align_idx = find_rotation_correspondence(anchors_after_rotations, rot_anchors)
+    elif cfg.epn.kanchor == 12:
+        ### anchors are vertices in S^2
+        pts_after_rotations = rotation_matrix_1 @ s2_coordinate.T
+        pts_after_rotations = pts_after_rotations.T
+        best_align_value, best_align_idx = find_point_correspondence(pts_after_rotations, s2_coordinate)
+    print('------------------------')
+    #################################
+
+    ############## Load point cloud
     # oxford
     oxford_pointcloud = np.fromfile(str("test_pointcloud.bin"), dtype=np.float64, count=-1).reshape([-1, 3])
     
@@ -206,16 +288,18 @@ if __name__ == '__main__':
         downsample_index = random.sample(range(0, 4095), 2048)
         oxford_pointcloud = oxford_pointcloud[downsample_index, :]    
     oxford_pointcloud = torch.Tensor(oxford_pointcloud)
+    # print('pc scale: ', oxford_pointcloud.max(0), oxford_pointcloud.min(0)) # radius 1
 
     # rotate 
     rotated_oxford_pointcloud = rotation_matrix_1 @ oxford_pointcloud.T
     rotated_oxford_pointcloud = rotated_oxford_pointcloud.T
     rotated_oxford_pointcloud = rotated_oxford_pointcloud.contiguous()
-    
+
     # visualize oxford point cloud
     # input_oxford_pcd = visualize_points(oxford_pointcloud, [0.5, 0.706, 0], vis=True)
     # visualize rotated oxford point cloud
     # rotated_oxford_pcd = visualize_points(rotated_oxford_pointcloud, [0, 0.706, 1], vis=True)
+    #################################
 
     #############
     ## NETWORK ##
@@ -241,9 +325,14 @@ if __name__ == '__main__':
     print('one_layer_feats', oxford_one_layer_feats.shape)
     print('rotated_oxford_one_layer_feats', rotated_oxford_one_layer_feats.shape)
 
+    ### align the features before and after the rotation using the found matching indices
+    rotated_oxford_one_layer_feats_remapped = rotated_oxford_one_layer_feats[..., best_align_idx]
+    
     for anchor_i in range(cfg.epn.kanchor):
-        print('similarity_one_layer_0_'+str(anchor_i))
-        similarity = cosine_similarity(oxford_one_layer_feats[:, :, 0], rotated_oxford_one_layer_feats[:, :, anchor_i])
+        print('before alignment: similarity_one_layer_%d_%d'%(anchor_i, anchor_i))
+        similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats[:, :, anchor_i])
+        print('after alignment: similarity_one_layer_%d_%d'%(anchor_i, best_align_idx[anchor_i]))
+        similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats_remapped[:, :, anchor_i])
 
     # print('\n==== feature debug ====')
     # print('one_layer_feats\n', one_layer_feats[:5, 0, :10])
