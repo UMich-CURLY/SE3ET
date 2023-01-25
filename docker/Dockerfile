@@ -45,3 +45,4 @@ RUN pip install einops
 RUN pip install ipdb
 RUN pip install tensorboardX
 RUN pip install setuptools==59.5.0
+RUN pip install yacs

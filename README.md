@@ -18,13 +18,13 @@ docker build --tag umcurly/geotransformer .
 bash build_docker_container.bash [container_name]
 cd ..
 ```
-Build extension package for GeoTransformer
+Build extension package for GeoTransformer (might need root access)
 ```
 python setup.py build develop
 ```
 Build extension package for E2PN
 ```
-cd vgtk
+cd geotransformer/modules/e2pn/vgtk
 python setup.py build_ext -i
 ```
 
