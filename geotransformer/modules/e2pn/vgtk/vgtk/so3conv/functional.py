@@ -327,7 +327,19 @@ def select_anchor(anchors, k):
         return anchors
 
 
+# def anchor_z(angle):
+#     c, s = np.cos(angle), np.sin(angle)
+#     R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
+#     return R
+# def anchors_z(k):
+#     angles = np.linspace(0, 2*np.pi, k, endpoint=False)
+#     mats = np.stack([anchor_z(angle) for angle in angles], 0)   # k*3*3
+#     return mats
+
 def get_anchors(k=60):
+    # if k > 1 and k < 10:
+    #     return anchors_z(k)
+    # else:
     return select_anchor(Rs,k)
 
 def get_intra_idx():
