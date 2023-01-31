@@ -20,7 +20,7 @@ class SO3ConvModel(nn.Module):
         super(SO3ConvModel, self).__init__()
 
         mlps=[[32], [64]]
-        strides=[1, 1, 1, 1]
+        strides=[2, 2, 1, 1]
         initial_radius_ratio = 0.2
         sampling_ratio = 0.8
         sampling_density = 0.4
@@ -34,7 +34,7 @@ class SO3ConvModel(nn.Module):
         dropout_rate = 0
         temperature = 3
         so3_pooling = 'attention'
-        input_radius = 0.4 #seems like the input actually has input radius 1?
+        input_radius = 1 #seems like the input actually has input radius 1?
         kpconv = False
 
         na = 1 if kpconv else cfg.epn.kanchor
@@ -166,13 +166,7 @@ def cosine_similarity(x1, x2):
             diff_id.append(pi)
 
     avg_sim = sum_sim / x1.shape[1]
-    print('same_id', len(same_id), 'diff_id', len(diff_id), 'avg_sim', avg_sim)
-    # if len(same_id) > 0:
-        # print('x1', x1[same_id[0], :], '\nx2', x2[same_id[0], :])
-    # print('diff_id', len(diff_id))
-    # if len(diff_id) > 0:
-        # print('x1', x1[diff_id[0], :], '\nx2', x2[diff_id[0], :])
-    # print('avg_sim', avg_sim)
+    # print('same_id', len(same_id), 'diff_id', len(diff_id), 'avg_sim', avg_sim)
     return avg_sim
 
 def visualize_points(points, color, vis=False):
@@ -280,7 +274,7 @@ if __name__ == '__main__':
 
     ############## Load point cloud
     # oxford
-    oxford_pointcloud = np.fromfile(str("test_pointcloud.bin"), dtype=np.float64, count=-1).reshape([-1, 3])
+    oxford_pointcloud = np.fromfile(str("test_pointcloud.bin"), dtype=np.float64).reshape([-1, 3])
     
     # downsample if GPU out of memory
     if cfg.epn.kanchor == 60:
@@ -329,14 +323,13 @@ if __name__ == '__main__':
     rotated_oxford_one_layer_feats_remapped = rotated_oxford_one_layer_feats[..., best_align_idx]
     
     for anchor_i in range(cfg.epn.kanchor):
-        print('before alignment: similarity_one_layer_%d_%d'%(anchor_i, anchor_i))
+        # print('before alignment: similarity_one_layer_%d_%d'%(anchor_i, anchor_i))
         similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats[:, :, anchor_i])
-        print('after alignment: similarity_one_layer_%d_%d'%(anchor_i, best_align_idx[anchor_i]))
-        similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats_remapped[:, :, anchor_i])
+        # print('after alignment: similarity_one_layer_%d_%d'%(anchor_i, best_align_idx[anchor_i]))
+        aligned_similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats_remapped[:, :, anchor_i])
+        if aligned_similarity == 1:
+            print("equivariant at anchor %d"%anchor_i)
+        else:
+            print("not equivariant at anchor %d"%anchor_i)
 
-    # print('\n==== feature debug ====')
-    # print('one_layer_feats\n', one_layer_feats[:5, 0, :10])
-    # print('rotated_one_layer_feats 0\n', rotated_one_layer_feats[:5, 0, :10])
-    # print('rotated_one_layer_feats 1\n', rotated_one_layer_feats[:5, 1, :10])
-    # print('rotated_one_layer_feats 2\n', rotated_one_layer_feats[:5, 2, :10])
     

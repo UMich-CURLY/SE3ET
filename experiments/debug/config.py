@@ -11,7 +11,6 @@ _C = edict()
 
 # common
 _C.seed = 7351
-# _C.num_points = 4096
 
 # model - backbone
 _C.backbone = edict()
@@ -37,16 +36,16 @@ _C.epn = edict()
 # _C.epn.num_kernel_points = 15 # Number of kernel points
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 12, quotient_factor  = 5, k = 13
-_C.epn.kanchor = 12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
-_C.epn.quotient_factor = 5 # > 1 enables quotient features. 2 results in C6/C2. 
-_C.epn.num_kernel_points = 13 # Number of kernel points
-_C.num_points = 4096
+# _C.epn.kanchor = 12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+# _C.epn.quotient_factor = 5 # > 1 enables quotient features. 2 results in C6/C2. 
+# _C.epn.num_kernel_points = 13 # Number of kernel points
+# _C.num_points = 4096
 # ======== EPN ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
-# _C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
-# _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
-# _C.epn.num_kernel_points = 13 # Number of kernel points
-# _C.num_points = 2048
+_C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+_C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
+_C.epn.num_kernel_points = 13 # Number of kernel points
+_C.num_points = 2048
 # ========
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false
 _C.epn.att_pooling = False # early fusion with attentive averge pooling

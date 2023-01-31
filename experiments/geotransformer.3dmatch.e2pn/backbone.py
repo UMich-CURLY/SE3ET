@@ -1,73 +1,145 @@
 import torch
 import torch.nn as nn
 
-from geotransformer.modules.kpconv import nearest_upsample
-from geotransformer.modules.e2pn.blocks_epn import LiftBlockEPN, SimpleBlockEPN, ResnetBottleneckBlockEPN, UnaryBlockEPN, LastUnaryBlockEPN
-class E2PN(nn.Module):
+# from geotransformer.modules.kpconv import nearest_upsample
+# from geotransformer.modules.e2pn.blocks_epn import LiftBlockEPN, SimpleBlockEPN, ResnetBottleneckBlockEPN, UnaryBlockEPN, LastUnaryBlockEPN
+
+from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock
+from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices
+
+from config import make_cfg
+cfg = make_cfg()
+
+class E2PNBackbone(nn.Module):
     def __init__(self, input_dim, output_dim, init_dim, config_epn):
-        super(E2PN, self).__init__()
+        super(E2PNBackbone, self).__init__()
 
-        radius = config_epn.first_subsampling_dl * config_epn.conv_radius        
+        mlps=[[init_dim], [init_dim*2], \
+              [init_dim*2], [init_dim*4], [init_dim*4], \
+              [init_dim*4], [init_dim*8], [init_dim*8], \
+              [init_dim*8], [init_dim*16], [init_dim*16]]
+        strides=[1, 1, \
+                 2, 1, 1, \
+                 2, 1, 1, \
+                 2, 1, 1]
+        initial_radius_ratio = 0.2
+        sampling_ratio = 0.8
+        sampling_density = 0.4
+        kernel_density = 1
+        kernel_multiplier = 2
+        sigma_ratio= 0.5
+        xyz_pooling = None
 
-        self.preprocess = LiftBlockEPN('lift_epn', input_dim, config_epn)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        input_num = cfg.train.point_limit = 10000
+        dropout_rate = 0
+        temperature = 3
+        so3_pooling = 'attention'
+        input_radius = 1 #seems like the input actually has input radius 1?
+        kpconv = False
 
-        self.encoder1_1 = SimpleBlockEPN('simple_epn', input_dim, init_dim, radius, config_epn)
-        self.encoder1_2 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim, init_dim * 2, radius, config_epn) #resnetb_strided_epn?
+        na = 1 if kpconv else cfg.epn.kanchor
 
-        self.encoder2_1 = ResnetBottleneckBlockEPN('resnetb_strided_epn', init_dim * 2, init_dim * 2, radius, config_epn)
-        self.encoder2_2 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 2, init_dim * 4, radius, config_epn)
-        self.encoder2_3 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 4, init_dim * 4, radius, config_epn)
+        # compute parameters for the model
 
-        self.encoder3_1 = ResnetBottleneckBlockEPN('resnetb_strided_epn', init_dim * 4, init_dim * 4, radius, config_epn)
-        self.encoder3_2 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 4, init_dim * 8, radius, config_epn)
-        self.encoder3_3 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 8, init_dim * 8, radius, config_epn)
+        # print("[MODEL] USING RADIUS AT %f"%input_radius)
+        params = {'name': 'Equivariant ZPConv Model',
+                'backbone': [],
+                'na': na
+                }
+        dim_in = 1
 
-        self.encoder4_1 = ResnetBottleneckBlockEPN('resnetb_strided_epn', init_dim * 8, init_dim * 8, radius, config_epn)
-        self.encoder4_2 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 8, init_dim * 16, radius, config_epn)
-        self.encoder4_3 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 16, init_dim * 16, radius, config_epn)
+        # process args
+        n_layer = len(mlps)
+        stride_current = 1
+        stride_multipliers = [stride_current]
+        for i in range(n_layer):
+            stride_current *= 2
+            stride_multipliers += [stride_current]
 
-        self.decoder3 = UnaryBlockEPN(init_dim * 24, init_dim * 8, config_epn.use_batch_norm, config_epn.batch_norm_momentum)
-        self.decoder2 = LastUnaryBlockEPN(init_dim * 12, output_dim)
+        num_centers = [int(input_num / multiplier) for multiplier in stride_multipliers]
 
-    def forward(self, feats, data_dict):
-        feats_list = []
+        radius_ratio = [initial_radius_ratio * multiplier**sampling_density for multiplier in stride_multipliers]
 
-        points_list = data_dict['points']
-        neighbors_list = data_dict['neighbors']
-        subsampling_list = data_dict['subsampling']
-        upsampling_list = data_dict['upsampling']
+        radii = [r * input_radius for r in radius_ratio]
 
-        print('points_list[0]', points_list[0].shape, points_list[0])
-        feats_s1 = feats # N x 1 # points_list[0]: N x 3
-        feats_s1 = self.preprocess(feats_s1) # N x kanchor x 1
-        feats_s1 = self.encoder1_1(feats_s1, points_list[0], points_list[0], neighbors_list[0]) # N x kanchor x init_dim
-        feats_s1 = self.encoder1_2(feats_s1, points_list[0], points_list[0], neighbors_list[0]) # N x kanchor x init_dim*2
+        # Compute sigma
+        weighted_sigma = [sigma_ratio * radii[0]**2]
+        for idx, s in enumerate(strides):
+            weighted_sigma.append(weighted_sigma[idx] * s)
 
-        feats_s2 = self.encoder2_1(feats_s1, points_list[1], points_list[0], subsampling_list[0]) # 6460 x kanchor x init_dim*2
-        feats_s2 = self.encoder2_2(feats_s2, points_list[1], points_list[1], neighbors_list[1]) # 6460 x kanchor x init_dim*4
-        feats_s2 = self.encoder2_3(feats_s2, points_list[1], points_list[1], neighbors_list[1]) # 6460 x kanchor x init_dim*4
+        for i, block in enumerate(mlps):
+            block_param = []
+            for j, dim_out in enumerate(block):
+                lazy_sample = i != 0 or j != 0
 
-        feats_s3 = self.encoder3_1(feats_s2, points_list[2], points_list[1], subsampling_list[1])
-        feats_s3 = self.encoder3_2(feats_s3, points_list[2], points_list[2], neighbors_list[2])
-        feats_s3 = self.encoder3_3(feats_s3, points_list[2], points_list[2], neighbors_list[2]) # 1844 x kanchor x init_dim*8
+                stride_conv = i == 0 or xyz_pooling != 'stride'
 
-        feats_s4 = self.encoder4_1(feats_s3, points_list[3], points_list[2], subsampling_list[2])
-        feats_s4 = self.encoder4_2(feats_s4, points_list[3], points_list[3], neighbors_list[3])
-        feats_s4 = self.encoder4_3(feats_s4, points_list[3], points_list[3], neighbors_list[3]) # 549 x kanchor x init_dim*16
+                # TODO: WARNING: Neighbor here did not consider the actual nn for pooling. Hardcoded in vgtk for now.
+                neighbor = int(sampling_ratio * num_centers[i] * radius_ratio[i]**(1/sampling_density))
 
-        latent_s4 = feats_s4
-        feats_list.append(feats_s4)
+                kernel_size = 1
+                if j == 0:
+                    # stride at first (if applicable), enforced at first layer
+                    inter_stride = strides[i]
+                    nidx = i if i == 0 else i+1
+                    # nidx = i if (i == 0 or xyz_pooling != 'stride') else i+1
+                    if stride_conv:
+                        neighbor *= 2 
+                        kernel_size = 1 # if inter_stride < 4 else 3
+                else:
+                    inter_stride = 1
+                    nidx = i+1
 
-        latent_s3 = nearest_upsample(latent_s4, upsampling_list[2])
-        latent_s3 = torch.cat([latent_s3, feats_s3], dim=2)
-        latent_s3 = self.decoder3(latent_s3)
-        feats_list.append(latent_s3)
+                # one-inter one-intra policy
+                if na == 60:
+                    block_type = 'separable_block' 
+                elif na == 12:
+                    block_type = 'separable_s2_block'
+                elif na < 60:
+                    block_type = 'inter_block'
 
-        latent_s2 = nearest_upsample(latent_s3, upsampling_list[1])
-        latent_s2 = torch.cat([latent_s2, feats_s2], dim=2)
-        latent_s2 = self.decoder2(latent_s2)
-        feats_list.append(latent_s2)
+                conv_param = {
+                    'type': block_type,
+                    'args': {
+                        'dim_in': dim_in,
+                        'dim_out': dim_out,
+                        'kernel_size': kernel_size,
+                        'stride': inter_stride,
+                        'radius': radii[nidx],
+                        'sigma': weighted_sigma[nidx],
+                        'n_neighbor': neighbor,
+                        'lazy_sample': lazy_sample,
+                        'dropout_rate': dropout_rate,
+                        'multiplier': kernel_multiplier,
+                        'activation': 'leaky_relu',
+                        'pooling': xyz_pooling,
+                        'kanchor': na,
+                    }
+                }
+                block_param.append(conv_param)
 
-        feats_list.reverse()
+                dim_in = dim_out
 
-        return feats_list
+            params['backbone'].append(block_param)
+
+        # build model
+        self.backbone = nn.ModuleList()
+        for block_param in params['backbone']:
+            self.backbone.append(BasicSO3ConvBlock(block_param))
+
+        self.na_in = params['na']
+
+    def forward(self, x):
+        # nb, np, 3 -> [nb, 3, np] x [nb, 1, np, na]
+        x = preprocess_input(x, self.na_in, False)
+
+        for block_i, block in enumerate(self.backbone):
+            x = block(x)
+
+        output = x.feats.clone().detach()
+
+        return output
+
+    def get_anchor(self):
+        return self.backbone[-1].get_anchor()
