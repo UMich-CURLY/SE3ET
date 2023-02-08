@@ -84,8 +84,8 @@ _C.backbone.init_radius = _C.backbone.base_radius * _C.backbone.init_voxel_size
 _C.backbone.init_sigma = _C.backbone.base_sigma * _C.backbone.init_voxel_size
 _C.backbone.group_norm = 32
 _C.backbone.input_dim = 1
-_C.backbone.init_dim = 64
-_C.backbone.output_dim = 256
+_C.backbone.init_dim = 16
+_C.backbone.output_dim = 32
 
 
 # epn
@@ -108,6 +108,7 @@ _C.epn.num_kernel_points = 13 # Number of kernel points
 # _C.epn.num_kernel_points = 13 # Number of kernel points
 # _C.num_points = 2048
 # ========
+_C.epn.num_points = _C.train.point_limit
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false
 _C.epn.att_pooling = False # early fusion with attentive averge pooling
 _C.epn.att_permute = False # early fusion with soft permutation
@@ -145,11 +146,14 @@ _C.coarse_matching.dual_normalization = True
 
 # model - GeoTransformer
 _C.geotransformer = edict()
-_C.geotransformer.input_dim = 1024
-_C.geotransformer.hidden_dim = 256
-_C.geotransformer.output_dim = 256
+_C.geotransformer.input_dim = 32 #256 #1024
+_C.geotransformer.hidden_dim = 32 #256
+_C.geotransformer.output_dim = 32 #256
 _C.geotransformer.num_heads = 4
-_C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
+# _C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
+_C.geotransformer.blocks = ['cross_r_soft', 'self', 'cross']
+# _C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self, cross']
+ #['cross_r_soft', 'self_eq', 'cross_eq', 'cross_a_soft', 'cross_a_best', 'cross_r_best']
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3

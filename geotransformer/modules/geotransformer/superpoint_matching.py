@@ -14,8 +14,8 @@ class SuperPointMatching(nn.Module):
         r"""Extract superpoint correspondences.
 
         Args:
-            ref_feats (Tensor): features of the superpoints in reference point cloud.
-            src_feats (Tensor): features of the superpoints in source point cloud.
+            ref_feats (Tensor): features of the superpoints in reference point cloud. (B, N, C), equivariant version: (B, A, N, C)
+            src_feats (Tensor): features of the superpoints in source point cloud. (B, N, C), equivariant version: (B, A, N, C)
             ref_masks (BoolTensor=None): masks of the superpoints in reference point cloud (False if empty).
             src_masks (BoolTensor=None): masks of the superpoints in source point cloud (False if empty).
 

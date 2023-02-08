@@ -4,24 +4,26 @@ import torch.nn as nn
 # from geotransformer.modules.kpconv import nearest_upsample
 # from geotransformer.modules.e2pn.blocks_epn import LiftBlockEPN, SimpleBlockEPN, ResnetBottleneckBlockEPN, UnaryBlockEPN, LastUnaryBlockEPN
 
-from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock
+from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock, FinalLinear
 from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices
-
-from config import make_cfg
-cfg = make_cfg()
 
 class E2PNBackbone(nn.Module):
     def __init__(self, input_dim, output_dim, init_dim, config_epn):
         super(E2PNBackbone, self).__init__()
 
-        mlps=[[init_dim], [init_dim*2], \
-              [init_dim*2], [init_dim*4], [init_dim*4], \
-              [init_dim*4], [init_dim*8], [init_dim*8], \
-              [init_dim*8], [init_dim*16], [init_dim*16]]
-        strides=[1, 1, \
-                 2, 1, 1, \
-                 2, 1, 1, \
-                 2, 1, 1]
+        # original GeoTransformer backbone strucutre, run out of memory using E2PN
+        # mlps=[[init_dim], [init_dim*2], \
+        #       [init_dim*2], [init_dim*4], [init_dim*4], \
+        #       [init_dim*4], [init_dim*8], [init_dim*8], \
+        #       [init_dim*8], [init_dim*16], [init_dim*16]]
+        # strides=[1, 1, \
+        #          2, 1, 1, \
+        #          2, 1, 1, \
+        #          2, 1, 1]
+
+        mlps=[[init_dim], [init_dim*2]]
+        out_mlps=[mlps[-1][0], output_dim]
+        strides=[2, 8]
         initial_radius_ratio = 0.2
         sampling_ratio = 0.8
         sampling_density = 0.4
@@ -31,14 +33,14 @@ class E2PNBackbone(nn.Module):
         xyz_pooling = None
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        input_num = cfg.train.point_limit = 10000
+        input_num = config_epn.num_points
         dropout_rate = 0
         temperature = 3
         so3_pooling = 'attention'
         input_radius = 1 #seems like the input actually has input radius 1?
         kpconv = False
 
-        na = 1 if kpconv else cfg.epn.kanchor
+        na = 1 if kpconv else config_epn.kanchor
 
         # compute parameters for the model
 
@@ -122,24 +124,55 @@ class E2PNBackbone(nn.Module):
                 dim_in = dim_out
 
             params['backbone'].append(block_param)
+    
+        params['outblock'] = {
+            'dim_in': dim_in,
+            'mlp': out_mlps,
+            'pooling': so3_pooling,
+            'temperature': temperature,
+            'kanchor': na,
+        }
 
         # build model
         self.backbone = nn.ModuleList()
         for block_param in params['backbone']:
             self.backbone.append(BasicSO3ConvBlock(block_param))
 
+        self.outblock = FinalLinear(params['outblock'])
+
         self.na_in = params['na']
 
     def forward(self, x):
+        """
+        Args:
+            x (Tensor): (N, 3) one input pointcloud
+        Returns:
+            feat_c (Tensor): (A, N'', C) output features
+            feat_f (Tensor): (A, N', C) output features
+            points_c (Tensor): (N'', 3) output features
+            points_f (Tensor): (N', 3) output features
+            feat_inv_c (Tensor): (N'', C) output features
+        """
+        # np, 3 -> nb, np, 3
+        x = x.unsqueeze(0)
         # nb, np, 3 -> [nb, 3, np] x [nb, 1, np, na]
         x = preprocess_input(x, self.na_in, False)
 
         for block_i, block in enumerate(self.backbone):
             x = block(x)
+            if block_i == 0:
+                points_f = x.xyz.clone().detach().transpose(-1, -2).squeeze(0) # fine points are the points after the first striding
+                feat_f = x.feats.clone().detach().permute(0, 3, 2, 1).squeeze(0)
 
-        output = x.feats.clone().detach()
+        points_c = x.xyz.clone().detach().transpose(-1, -2).squeeze(0) # coarse points are the last points
+        feat_c = x.feats.clone().detach().permute(0, 3, 2, 1).squeeze(0)
 
-        return output
+        # TODO: upsample feature for fine matching
+
+        x = self.outblock(x)
+        feat_inv_c = x.clone().detach().squeeze(0)
+
+        return feat_c, feat_f, points_c, points_f, feat_inv_c
 
     def get_anchor(self):
         return self.backbone[-1].get_anchor()
