@@ -13,7 +13,7 @@ from geotransformer.modules.geotransformer import (
     LocalGlobalRegistration,
 )
 
-from backbone import E2PN
+from backbone import E2PNBackbone
 
 
 class GeoTransformer(nn.Module):
@@ -22,7 +22,7 @@ class GeoTransformer(nn.Module):
         self.num_points_in_patch = cfg.model.num_points_in_patch
         self.matching_radius = cfg.model.ground_truth_matching_radius
 
-        self.backbone = E2PN(
+        self.backbone = E2PNBackbone(
             cfg.backbone.input_dim,
             cfg.backbone.output_dim,
             cfg.backbone.init_dim,

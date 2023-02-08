@@ -25,6 +25,7 @@ from geotransformer.datasets.registration.threedmatch.utils import (
     write_log_file,
 )
 
+from geotransformer.utils.timer import Timer
 from config import make_cfg
 
 
@@ -77,6 +78,9 @@ def eval_one_epoch(args, cfg, logger):
     scene_registration_result_dict = {}
 
     scene_roots = sorted(glob.glob(osp.join(features_root, '*')))
+    
+    timer = Timer()
+
     for scene_root in scene_roots:
         coarse_matching_meter.reset_meter('scene_precision')
         coarse_matching_meter.reset_meter('scene_PMR>0')
@@ -122,7 +126,7 @@ def eval_one_epoch(args, cfg, logger):
             transform = data_dict['transform']
             pcd_overlap = data_dict['overlap']
 
-            if args.num_corr is not None and corr_scores.shape[0] > engine.args.num_corr:
+            if args.num_corr is not None and corr_scores.shape[0] > args.num_corr:
                 sel_indices = np.argsort(-corr_scores)[: args.num_corr]
                 ref_corr_points = ref_corr_points[sel_indices]
                 src_corr_points = src_corr_points[sel_indices]
@@ -166,6 +170,7 @@ def eval_one_epoch(args, cfg, logger):
             if args.method == 'lgr':
                 estimated_transform = data_dict['estimated_transform']
             elif args.method == 'ransac':
+                timer.add_prepare_time()
                 estimated_transform = registration_with_ransac_from_correspondences(
                     src_corr_points,
                     ref_corr_points,
@@ -173,7 +178,9 @@ def eval_one_epoch(args, cfg, logger):
                     ransac_n=cfg.ransac.num_points,
                     num_iterations=cfg.ransac.num_iterations,
                 )
+                timer.add_process_time()
             elif args.method == 'svd':
+                timer.add_prepare_time()
                 with torch.no_grad():
                     ref_corr_points = torch.from_numpy(ref_corr_points).cuda()
                     src_corr_points = torch.from_numpy(src_corr_points).cuda()
@@ -182,6 +189,7 @@ def eval_one_epoch(args, cfg, logger):
                         src_corr_points, ref_corr_points, corr_scores, return_transform=True
                     )
                     estimated_transform = estimated_transform.detach().cpu().numpy()
+                timer.add_process_time()
             else:
                 raise ValueError(f'Unsupported registration method: {args.method}.')
 
@@ -348,6 +356,9 @@ def eval_one_epoch(args, cfg, logger):
         message += ', median_RTE: {:.3f}'.format(result_dict['median_rte'])
         logger.critical(message)
 
+    message = '  Timer: '
+    message += f', {timer.tostring()}'
+    logger.critical(message)
 
 def main():
     parser = make_parser()
