@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from vgtk.spconv import SphericalPointCloud
 import vgtk.pc as pctk
 from . import functional as L
+import vgtk.functional as fr
 
 # BasicSO3Conv = BasicZPConv
 
@@ -37,9 +38,25 @@ def sort_level_vs(v_idxs, vs):
     idx_l1_sorted = np.array(idx_l1_sorted)
     return idx_l1_sorted
 
+def z_rots(gammas):
+    na = len(gammas)
+    Rz = np.zeros([na, 9], dtype=np.float32)
+    calpha = np.cos(gammas)
+    salpha = np.sin(gammas)
+    Rz[:,0] = calpha
+    Rz[:,1] = -salpha
+    Rz[:,2] = 0
+    Rz[:,3] = salpha
+    Rz[:,4] = calpha
+    Rz[:,5] = 0
+    Rz[:,6] = 0
+    Rz[:,7] = 0
+    Rz[:,8] = 1
+    Rz = Rz.reshape(-1, 3, 3)
+    return Rz
 
 class BasicS2ConvV2(nn.Module):
-    def __init__(self, dim_in, dim_out, kernel_size, anchor_size, debug=False) -> None:
+    def __init__(self, dim_in, dim_out, kernel_size, anchor_size, quotient_size=0, anchors=None, kernels=None, anchor_vs=None, debug=False) -> None:
         """Linear layer projecting features aggregated at the kernel points to the centers.
         Using the exact derivation
         [b, c1, k, p, a] -> [b, c2, p, a]"""
@@ -49,94 +66,112 @@ class BasicS2ConvV2(nn.Module):
         self.kernel_size = kernel_size
         self.anchor_size = anchor_size
 
-        assert self.kernel_size == 13, f"kernel_size {kernel_size} not implemented"
-        W = torch.empty(self.dim_out, self.dim_in, 36, dtype=torch.float32)      # c2, c1, 36(3*4+2*12)
+        trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(anchors, anchor_vs)
+        self.register_buffer('trace_idx_ori', torch.tensor(trace_idx_ori.astype(np.int64))) # 4(na rotations)*4(na channels)
+        self.register_buffer('trace_idx_rot', torch.tensor(trace_idx_rot.astype(np.int64)))
+        trace_idxv_ori, trace_idxv_rot = fr.get_relativeV_index(anchors, kernels)
+        self.register_buffer('trace_idxv_ori', torch.tensor(trace_idxv_ori.astype(np.int64)))   # 12(na)*13(nk)
+        self.register_buffer('trace_idxv_rot', torch.tensor(trace_idxv_rot.astype(np.int64)))
+
+        gammas = np.linspace(0, 2 * np.pi, quotient_size, endpoint=False, dtype=np.float32)
+        anchor_Rzs = z_rots(gammas)
+        anchor_Rzs = torch.tensor(anchor_Rzs)
+        idx_map, n_param_effective = self.get_idx_map(kernels, anchor_vs, anchor_Rzs)
+        self.register_buffer('idx_map', idx_map)
+
+        # assert self.kernel_size == 15, f"kernel_size {kernel_size} not implemented"
+        print(f"n_param_effective = {n_param_effective}")   # 22
+        W = torch.empty(self.dim_out, self.dim_in, n_param_effective, dtype=torch.float32)      # c2, c1, 36(3*4+2*12)
         nn.init.xavier_normal_(W, gain=nn.init.calculate_gain('relu'))
         # W = W.view(self.dim_out, self.dim_in*5)
         self.register_parameter('W', nn.Parameter(W))
 
-        ### permute the weights under rotations
-        trace_idx_ori, trace_idx_rot = L.get_relativeV12_index()    # 12(rotation anchors)*12(indices on s2), 12*12
-        # trace_idxv_ori = trace_idxv_ori.transpose(1,0)  # 12(indices on s2)*12(rotation anchors)
-        # trace_idxv_rot = trace_idxv_rot.transpose(1,0)  # 12*12
+        if self.anchor_size == 12:
+            # ### permute the weights under rotations
+            # trace_idx_ori, trace_idx_rot = L.get_relativeV12_index()    # 12(rotation anchors)*12(indices on s2), 12*12
+            # # trace_idxv_ori = trace_idxv_ori.transpose(1,0)  # 12(indices on s2)*12(rotation anchors)
+            # # trace_idxv_rot = trace_idxv_rot.transpose(1,0)  # 12*12
 
-        # vertices = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 13,3
-        trace_idxv_ori = np.concatenate([trace_idx_ori,np.ones_like(trace_idx_ori[:, [0]])*12],axis=1)   # 12(na)*13(nk)
-        trace_idxv_rot = np.concatenate([trace_idx_rot,np.ones_like(trace_idx_rot[:, [0]])*12],axis=1)   # 12*13
+            # # vertices = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 13,3
+            # trace_idxv_ori = np.concatenate([trace_idx_ori,np.ones_like(trace_idx_ori[:, [0]])*12],axis=1)   # 12(na)*13(nk)
+            # trace_idxv_rot = np.concatenate([trace_idx_rot,np.ones_like(trace_idx_rot[:, [0]])*12],axis=1)   # 12*13
 
-        self.register_buffer('trace_idxv_ori', torch.tensor(trace_idxv_ori.astype(np.int64)))   # 12(na)*13(nk)
-        self.register_buffer('trace_idxv_rot', torch.tensor(trace_idxv_rot.astype(np.int64)))
+            # self.register_buffer('trace_idxv_ori', torch.tensor(trace_idxv_ori.astype(np.int64)))   # 12(na)*13(nk)
+            # self.register_buffer('trace_idxv_rot', torch.tensor(trace_idxv_rot.astype(np.int64)))
 
-        self.register_buffer('trace_idx_ori', torch.tensor(trace_idx_ori.astype(np.int64))) # 12(na rotations)*12(na channels)
-        self.register_buffer('trace_idx_rot', torch.tensor(trace_idx_rot.astype(np.int64)))
+            # self.register_buffer('trace_idx_ori', torch.tensor(trace_idx_ori.astype(np.int64))) # 12(na rotations)*12(na channels)
+            # self.register_buffer('trace_idx_rot', torch.tensor(trace_idx_rot.astype(np.int64)))
 
-        ### pick the self, neighbor, level2, opposite, center indices
-        vs, v_adjs, v_level2s, v_opps, _ = L.get_icosahedron_vertices() # 12*5, 12*5, 12
-        v0_adjs = v_adjs[0]         # 5
-        v0_level2s = v_level2s[0]   # 5
-        v0_opps = v_opps[0]         # a number
-        inv_idxs = torch.empty(anchor_size, dtype=torch.int64)
-        inv_idxs[0] = 0
-        inv_idxs[v0_adjs] = 1
-        inv_idxs[v0_level2s] = 2
-        inv_idxs[v0_opps] = 3
+            # ### pick the self, neighbor, level2, opposite, center indices
+            # vs, v_adjs, v_level2s, v_opps, _ = L.get_icosahedron_vertices() # 12*5, 12*5, 12
+            # v0_adjs = v_adjs[0]         # 5
+            # v0_level2s = v_level2s[0]   # 5
+            # v0_opps = v_opps[0]         # a number
+            # inv_idxs = torch.empty(anchor_size, dtype=torch.int64)
+            # inv_idxs[0] = 0
+            # inv_idxs[v0_adjs] = 1
+            # inv_idxs[v0_level2s] = 2
+            # inv_idxs[v0_opps] = 3
 
-        v0_adjs_sorted = sort_level_vs(v0_adjs, vs)
-        v0_level2s_sorted = sort_level_vs(v0_level2s, vs)
-        v0_adjs_sorted = torch.tensor(v0_adjs_sorted, dtype=torch.int64)
-        v0_level2s_sorted = torch.tensor(v0_level2s_sorted, dtype=torch.int64)
+            # v0_adjs_sorted = sort_level_vs(v0_adjs, vs)
+            # v0_level2s_sorted = sort_level_vs(v0_level2s, vs)
+            # v0_adjs_sorted = torch.tensor(v0_adjs_sorted, dtype=torch.int64)
+            # v0_level2s_sorted = torch.tensor(v0_level2s_sorted, dtype=torch.int64)
 
-        idx_map = torch.empty(kernel_size * anchor_size, dtype=torch.int64) # each element is an index in the range 36
-        ### the three kernel points on the z axis
-        idx_map[:anchor_size] = inv_idxs
-        idx_map[v0_opps*anchor_size:(v0_opps+1)*anchor_size ] = inv_idxs + 4
-        idx_map[-anchor_size:] = inv_idxs + 8
-        ### the rest kernel points on the 2 rings
-        idx_seq = torch.arange(12,24, dtype=torch.int64)
-        idx_seq2 = torch.arange(24,36, dtype=torch.int64)
-        idx_map[v0_adjs_sorted[0]*anchor_size:(v0_adjs_sorted[0]+1)*anchor_size] = idx_seq
-        idx_map[v0_level2s_sorted[0]*anchor_size:(v0_level2s_sorted[0]+1)*anchor_size] = idx_seq2
+            # idx_map = torch.empty(kernel_size * anchor_size, dtype=torch.int64) # each element is an index in the range 36
+            # ### the three kernel points on the z axis
+            # idx_map[:anchor_size] = inv_idxs
+            # idx_map[v0_opps*anchor_size:(v0_opps+1)*anchor_size ] = inv_idxs + 4
+            # idx_map[-anchor_size:] = inv_idxs + 8
+            # ### the rest kernel points on the 2 rings
+            # idx_seq = torch.arange(12,24, dtype=torch.int64)
+            # idx_seq2 = torch.arange(24,36, dtype=torch.int64)
+            # idx_map[v0_adjs_sorted[0]*anchor_size:(v0_adjs_sorted[0]+1)*anchor_size] = idx_seq
+            # idx_map[v0_level2s_sorted[0]*anchor_size:(v0_level2s_sorted[0]+1)*anchor_size] = idx_seq2
 
-        idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
-        v0_adjs_sorted_shifted = v0_adjs_sorted[[4,0,1,2,3]]
-        idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
-        v0_level2s_sorted_shifted = v0_level2s_sorted[[4,0,1,2,3]]
-        idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
-        idx_seq_new[0] = 0
-        idx_seq_new[v0_opps] = v0_opps
-        idx_map[v0_adjs_sorted[1]*anchor_size:(v0_adjs_sorted[1]+1)*anchor_size] = idx_seq[idx_seq_new]
-        idx_map[v0_level2s_sorted[1]*anchor_size:(v0_level2s_sorted[1]+1)*anchor_size] = idx_seq2[idx_seq_new]
+            # idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
+            # v0_adjs_sorted_shifted = v0_adjs_sorted[[4,0,1,2,3]]
+            # idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
+            # v0_level2s_sorted_shifted = v0_level2s_sorted[[4,0,1,2,3]]
+            # idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
+            # idx_seq_new[0] = 0
+            # idx_seq_new[v0_opps] = v0_opps
+            # idx_map[v0_adjs_sorted[1]*anchor_size:(v0_adjs_sorted[1]+1)*anchor_size] = idx_seq[idx_seq_new]
+            # idx_map[v0_level2s_sorted[1]*anchor_size:(v0_level2s_sorted[1]+1)*anchor_size] = idx_seq2[idx_seq_new]
 
-        idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
-        v0_adjs_sorted_shifted = v0_adjs_sorted[[3,4,0,1,2]]
-        idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
-        v0_level2s_sorted_shifted = v0_level2s_sorted[[3,4,0,1,2]]
-        idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
-        idx_seq_new[0] = 0
-        idx_seq_new[v0_opps] = v0_opps
-        idx_map[v0_adjs_sorted[2]*anchor_size:(v0_adjs_sorted[2]+1)*anchor_size] = idx_seq[idx_seq_new]
-        idx_map[v0_level2s_sorted[2]*anchor_size:(v0_level2s_sorted[2]+1)*anchor_size] = idx_seq2[idx_seq_new]
+            # idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
+            # v0_adjs_sorted_shifted = v0_adjs_sorted[[3,4,0,1,2]]
+            # idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
+            # v0_level2s_sorted_shifted = v0_level2s_sorted[[3,4,0,1,2]]
+            # idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
+            # idx_seq_new[0] = 0
+            # idx_seq_new[v0_opps] = v0_opps
+            # idx_map[v0_adjs_sorted[2]*anchor_size:(v0_adjs_sorted[2]+1)*anchor_size] = idx_seq[idx_seq_new]
+            # idx_map[v0_level2s_sorted[2]*anchor_size:(v0_level2s_sorted[2]+1)*anchor_size] = idx_seq2[idx_seq_new]
 
-        idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
-        v0_adjs_sorted_shifted = v0_adjs_sorted[[2,3,4,0,1]]
-        idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
-        v0_level2s_sorted_shifted = v0_level2s_sorted[[2,3,4,0,1]]
-        idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
-        idx_seq_new[0] = 0
-        idx_seq_new[v0_opps] = v0_opps
-        idx_map[v0_adjs_sorted[3]*anchor_size:(v0_adjs_sorted[3]+1)*anchor_size] = idx_seq[idx_seq_new]
-        idx_map[v0_level2s_sorted[3]*anchor_size:(v0_level2s_sorted[3]+1)*anchor_size] = idx_seq2[idx_seq_new]
+            # idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
+            # v0_adjs_sorted_shifted = v0_adjs_sorted[[2,3,4,0,1]]
+            # idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
+            # v0_level2s_sorted_shifted = v0_level2s_sorted[[2,3,4,0,1]]
+            # idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
+            # idx_seq_new[0] = 0
+            # idx_seq_new[v0_opps] = v0_opps
+            # idx_map[v0_adjs_sorted[3]*anchor_size:(v0_adjs_sorted[3]+1)*anchor_size] = idx_seq[idx_seq_new]
+            # idx_map[v0_level2s_sorted[3]*anchor_size:(v0_level2s_sorted[3]+1)*anchor_size] = idx_seq2[idx_seq_new]
 
-        idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
-        v0_adjs_sorted_shifted = v0_adjs_sorted[[1,2,3,4,0]]
-        idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
-        v0_level2s_sorted_shifted = v0_level2s_sorted[[1,2,3,4,0]]
-        idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
-        idx_seq_new[0] = 0
-        idx_seq_new[v0_opps] = v0_opps
-        idx_map[v0_adjs_sorted[4]*anchor_size:(v0_adjs_sorted[4]+1)*anchor_size] = idx_seq[idx_seq_new]
-        idx_map[v0_level2s_sorted[4]*anchor_size:(v0_level2s_sorted[4]+1)*anchor_size] = idx_seq2[idx_seq_new]
-        self.register_buffer('idx_map', idx_map)
+            # idx_seq_new = torch.empty(anchor_size, dtype=torch.int64)
+            # v0_adjs_sorted_shifted = v0_adjs_sorted[[1,2,3,4,0]]
+            # idx_seq_new[v0_adjs_sorted] = v0_adjs_sorted_shifted
+            # v0_level2s_sorted_shifted = v0_level2s_sorted[[1,2,3,4,0]]
+            # idx_seq_new[v0_level2s_sorted] = v0_level2s_sorted_shifted
+            # idx_seq_new[0] = 0
+            # idx_seq_new[v0_opps] = v0_opps
+            # idx_map[v0_adjs_sorted[4]*anchor_size:(v0_adjs_sorted[4]+1)*anchor_size] = idx_seq[idx_seq_new]
+            # idx_map[v0_level2s_sorted[4]*anchor_size:(v0_level2s_sorted[4]+1)*anchor_size] = idx_seq2[idx_seq_new]
+            # self.register_buffer('idx_map', idx_map)
+
+            assert n_param_effective == 36, f"n_param_effective {n_param_effective} not implemented"
+            assert self.kernel_size == 13, f"kernel_size {kernel_size} not implemented"
 
         idxs_k = self.trace_idxv_rot.transpose(0,1)[:,None,:].expand(-1, anchor_size, -1)  # a(rotations),k -> k, a(channels), a(rotations)
         
@@ -146,6 +181,41 @@ class BasicS2ConvV2(nn.Module):
         idxs_a = idxs_a[None,None].expand(self.dim_out, self.dim_in, -1,-1,-1)  # c2, c1, k, a(channels), a(rotations)
         self.register_buffer('idxs_k', idxs_k)  #   c2, c1, k, a(channels), a(rotations)
         self.register_buffer('idxs_a', idxs_a)  #   c2, c1, k, a(channels), a(rotations)
+
+    def get_idx_map(self, kernel_pts, anchors_vs, anchor_Rzs):
+        """kernel_pts: [k,3], anchor_size: int, anchor_Rzs: [n,3,3]"""
+        trace_idxv_ori, trace_idxv_rot = fr.get_relativeV_index(anchor_Rzs, kernel_pts) # n_rz * n_kpt
+        trace_idxr_ori, trace_idxr_rot = fr.get_relativeV_index(anchor_Rzs, anchors_vs)    # n_rz * n_anchors
+        trace_idxr_rot = trace_idxr_rot.swapaxes(0,1)
+        ### index: (Ri, pj)
+        kernel_size = kernel_pts.shape[0]
+        anchor_size = anchors_vs.shape[0]
+        anchor_Rz_size = anchor_Rzs.shape[0]
+        idx_map = torch.empty(kernel_size * anchor_size, dtype=torch.int64)
+        assigned_indices = set()
+        using_idx = 0
+        # print('kernel_pts', kernel_pts)
+        # print('anchors_vs', anchors_vs)
+        # print('anchor_Rzs', anchor_Rzs)
+        for k in range(kernel_size):
+            k_idxs = trace_idxv_ori[:,k]    #n_rz
+            for a in range(anchor_size):
+                a_idxs = trace_idxr_ori[:,a]
+                new_assigned = False
+                for az in range(anchor_Rz_size):
+                    # idx = (a_idxs[az], k_idxs[az])
+                    idx_flat = k_idxs[az] * anchor_size + a_idxs[az]
+                    if idx_flat not in assigned_indices:
+                        idx_map[idx_flat] = using_idx
+                        assigned_indices.add(idx_flat)
+                        new_assigned = True
+                    #     print('k={},a={},az={},k_idxs[az]={},a_idxs[az]={},using_idx={},assigning'.format(k,a,az,k_idxs[az],a_idxs[az],using_idx))
+                    # else:
+                    #     print('k={},a={},az={},k_idxs[az]={},a_idxs[az]={},using_idx={},assigned'.format(k,a,az,k_idxs[az],a_idxs[az],idx_map[idx_flat]))
+                if new_assigned:
+                    using_idx += 1
+        assert len(assigned_indices) == kernel_size * anchor_size, "{}, {}, {}".format(len(assigned_indices), kernel_size, anchor_size)
+        return idx_map, using_idx
 
     def forward(self, x):
         W = self.W[:,:,self.idx_map].reshape(self.dim_out, self.dim_in, self.kernel_size, self.anchor_size)    #C2,C1,kernel_size * anchor_size
@@ -336,12 +406,28 @@ class S2Conv(nn.Module):
         super().__init__()
         # get kernel points
         KERNEL_CONDENSE_RATIO = 0.7
-        vertices, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices() 
-        kernels = vertices * KERNEL_CONDENSE_RATIO * radius
-        kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 13,3
+        if kanchor== 12:
+            vertices, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices() 
+            kernels = vertices * KERNEL_CONDENSE_RATIO * radius
+            kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 13,3
 
-        # get so3 anchors (12x3x3 rotation matrices, the section of each element in S2)
-        anchors = L.get_anchorsV12()   # 12*3*3
+            # get so3 anchors (12x3x3 rotation matrices, the section of each element in S2)
+            anchors = L.get_anchorsV12()   # 12*3*3
+        elif kanchor == 4:
+            vertices, v_adjs, vRs, ecs, face_normals = L.get_tetrahedron_vertices()
+            print(f"S2Conv vertices, {vertices.shape}")
+            print(f"S2Conv ecs, {ecs.shape}")
+            print(f"S2Conv face_normals, {face_normals.shape}")
+            vts = np.concatenate([vertices, ecs, face_normals], axis=0)     # (4+6+4),3
+            # vts = np.concatenate([vertices, face_normals], axis=0)     # (4+6+4),3
+            kernels = vts * KERNEL_CONDENSE_RATIO * radius
+            kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 15,3
+            print(f"S2Conv kernels, {kernels.shape}")
+            
+            # get so3 anchors (4x3x3 rotation matrices, the section of each element in S2)
+            anchors = L.get_anchorsV12(tetra=True)   # 4*3*3
+        else:
+            raise NotImplementedError('kanchor = {} not implemented'.format(kanchor))
 
         # # debug only
         # if kanchor == 1:
@@ -358,8 +444,11 @@ class S2Conv(nn.Module):
         self.lazy_sample = lazy_sample
         self.pooling = pooling
         
-        # self.basic_conv = BasicS2Conv(dim_in, dim_out, self.kernel_size, anchors.shape[0])
-        self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0])
+        if kanchor == 12:
+            # self.basic_conv = BasicS2Conv(dim_in, dim_out, self.kernel_size, anchors.shape[0])
+            self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0], 5, anchors, kernels, vertices)
+        elif kanchor == 4:
+            self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0], 3, anchors, kernels, vertices)
         
 
         self.register_buffer('anchors', torch.tensor(anchors).to(torch.float32))

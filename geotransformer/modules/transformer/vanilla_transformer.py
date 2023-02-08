@@ -11,6 +11,12 @@ from einops import rearrange
 from geotransformer.modules.layers import build_dropout_layer
 from geotransformer.modules.transformer.output_layer import AttentionOutput
 import geotransformer.modules.transformer.utils_epn.anchors as L
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__),'../e2pn','vgtk') )
+import vgtk.so3conv as sptk
+import vgtk.functional as fr
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads, dropout=None):
@@ -69,7 +75,7 @@ class MultiHeadAttention(nn.Module):
 
         return hidden_states, attention_scores
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, kanchor=12, quotient_factor=5, attn_mode=None, alternative_impl=False, attn_r_summ='mean'):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=12):
         super(MultiHeadAttentionEQ, self).__init__()
         if d_model % num_heads != 0:
             raise ValueError('`d_model` ({}) must be a multiple of `num_heads` ({}).'.format(d_model, num_heads))
@@ -88,6 +94,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.num_correspondences = 3 #256
         self.attn_mode = attn_mode   # 'r_best' 'r_soft' 'a_best' 'a_soft'
         self.alternative_impl = alternative_impl
+        self.kanchor = kanchor
 
         # # obselete (only used in cross_anchor_attn_ra)
         # self.attn_r_soft = False
@@ -101,50 +108,27 @@ class MultiHeadAttentionEQ(nn.Module):
 
         self.init_anchors()
     def init_anchors(self):
-        if self.kanchor == 12 or self.kanchor == 60:
+        if self.kanchor == 12:
+            # anchors = L.get_anchorsV()
             vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
             self.adj0 = v_adjs[0,0]
-            if self.kanchor == 12:
-                assert self.quotient_factor == 5, self.quotient_factor
-                trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
-            elif self.kanchor == 60:
-                assert self.quotient_factor == 1, self.quotient_factor
-                trace_idx_ori, trace_idx_rot = L.get_relativeR_index(vRs)  # 60*60, 60*60 (ra, ar)
-                trace_idx_rot = trace_idx_rot.swapaxes(0,1)
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 60*3*3
+            trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
+            self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
+            self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
+            self.nr = trace_idx_ori.shape[0]
+            self.na = trace_idx_ori.shape[1]
+        elif self.kanchor == 4:
+            vs, v_adjs, vRs, ecs, face_normals = sptk.get_tetrahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)
+            self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
+            self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
+            self.nr = trace_idx_ori.shape[0]
+            self.na = trace_idx_ori.shape[1]
         else:
-            assert self.kanchor < 10, self.kanchor
-            if self.quotient_factor == 1:
-                vRs = L.get_anchors(self.kanchor)
-                trace_idx_ori, trace_idx_rot = L.get_relativeR_index(vRs)  # a*a, a*a (ra, ar)
-                trace_idx_rot = trace_idx_rot.swapaxes(0,1)
-            else:
-                anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
-                quotient_anchors = L.get_anchors(self.quotient_factor)
-                anchors = nn.Parameter(torch.tensor(anchors, dtype=torch.float32),
-                         requires_grad=False)
-                quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
-                            requires_grad=False)
-                all_anchors = torch.einsum('aij,bjk->abik', anchors, quotient_anchors)
-                # all_anchors_flat = all_anchors.flatten(0,1)
-                # rot_anchors = torch.einsum('aij,bjk->abik', all_anchors_flat, anchors)
-                rot_anchors = torch.einsum('aij,bjk->abik', anchors, anchors)
-                diff_r = torch.einsum('cdij,abik->cdabjk', all_anchors, rot_anchors)
-                cos_value = 0.5 * (torch.einsum('cdabii->cdab', diff_r) - 1)
-                cos_value, _ = torch.max(cos_value, 1)  # cdab -> cab
-                rres_ori, trace_idx_ori = torch.max(cos_value, 0) # cab -> ab     # find correspinding original element for each rotated
-                rres_rot, trace_idx_rot = torch.max(cos_value, 2) # cab -> ca     # find corresponding rotated element for each original
-                trace_idx_rot = trace_idx_rot.transpose(0,1)    # ac (rotation, anchors)
-
-        self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
-        self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
-        self.nr = trace_idx_ori.shape[0]
-        self.na = trace_idx_ori.shape[1]
-        
-        assert self.na == self.kanchor, self.trace_idx_ori.shape
-        if self.kanchor < 10:
-            assert self.nr == self.kanchor, self.trace_idx_ori.shape
-        else:
-            assert self.nr == self.kanchor * self.quotient_factor, self.trace_idx_ori.shape
+            raise NotImplementedError(f'self.kanchor={self.kanchor} not implemented')
         return
 
     def cross_anchor_attn_aa(self, q, k):
@@ -558,11 +542,11 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]    # , v_permute
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, kanchor=12, quotient_factor=5, attn_mode=None, alternative_impl=False, attn_r_summ='mean'):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
-            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout, kanchor, quotient_factor, attn_mode, alternative_impl, attn_r_summ)
+            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
         else:
             self.attention = MultiHeadAttention(d_model, num_heads, dropout=dropout)
         self.linear = nn.Linear(d_model, d_model)
@@ -594,11 +578,10 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, kanchor=12, quotient_factor=5, attn_mode=None, \
-                    alternative_impl=False, attn_r_summ='mean'):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
-        self.attention = AttentionLayer(d_model, num_heads, dropout, equivariant, kanchor, quotient_factor, attn_mode, alternative_impl, attn_r_summ)
+        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(

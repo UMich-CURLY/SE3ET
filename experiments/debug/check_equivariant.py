@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import open3d as o3d
 from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock
-from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices
+from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices, get_tetrahedron_vertices
 
 from config import make_cfg
 cfg = make_cfg()
@@ -102,6 +102,8 @@ class SO3ConvModel(nn.Module):
                 if na == 60:
                     block_type = 'separable_block' 
                 elif na == 12:
+                    block_type = 'separable_s2_block'
+                elif na == 4:
                     block_type = 'separable_s2_block'
                 elif na < 60:
                     block_type = 'inter_block'
@@ -211,6 +213,7 @@ if __name__ == '__main__':
     rot_anchors_vtx = torch.Tensor(get_anchorsV())
     s2_coordinate, _, _, _, _ = get_icosahedron_vertices()
     s2_coordinate = torch.Tensor(s2_coordinate)
+    s2_tetra, _, rot_tetra, _, _ = get_tetrahedron_vertices()
     print('Check that two sets of rotation anchors are not equal:')
     rot_diff_acos_max, rot_diff_acos_max_idx = find_rotation_correspondence(rot_anchors_face, rot_anchors_vtx)
 
@@ -224,6 +227,8 @@ if __name__ == '__main__':
         rot_anchors = rot_anchors_face
     elif cfg.epn.kanchor == 12:
         rot_anchors = rot_anchors_vtx
+    elif cfg.epn.kanchor == 4:
+        rot_anchors = rot_tetra
     elif cfg.epn.kanchor == 3:
         # rot_anchors = torch.Tensor(get_anchors(3))
         ### but EPN/E2PN in the EPN repo has not implemented kanchor=3
@@ -234,7 +239,7 @@ if __name__ == '__main__':
     ############## Load a test rotation
     load_test_rotation_from_anchors = True # True or False, both are fine
     if load_test_rotation_from_anchors:
-        rot_idx = np.random.randint(60)
+        rot_idx = np.random.randint(rot_anchors.shape[0])
         print('Load rotation from anchor', rot_idx)
         rotation_matrix_1 = torch.Tensor(rot_anchors[rot_idx])
     else:
@@ -249,6 +254,11 @@ if __name__ == '__main__':
                                             [0, torch.sin(theta_1), torch.cos(theta_1)],])
         elif cfg.epn.kanchor == 12:
             theta_1 = torch.Tensor([2 * torch.pi / 5])
+            rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
+                                            [torch.sin(theta_1), torch.cos(theta_1), 0],
+                                            [0, 0, 1]])
+        elif cfg.epn.kanchor == 4:
+            theta_1 = torch.Tensor([2 * torch.pi / 3])
             rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
                                             [torch.sin(theta_1), torch.cos(theta_1), 0],
                                             [0, 0, 1]])
@@ -269,6 +279,11 @@ if __name__ == '__main__':
         pts_after_rotations = rotation_matrix_1 @ s2_coordinate.T
         pts_after_rotations = pts_after_rotations.T
         best_align_value, best_align_idx = find_point_correspondence(pts_after_rotations, s2_coordinate)
+    elif cfg.epn.kanchor == 4:
+        ### anchors are vertices in S^2
+        pts_after_rotations = rotation_matrix_1 @ s2_tetra.T
+        pts_after_rotations = pts_after_rotations.T
+        best_align_value, best_align_idx = find_point_correspondence(pts_after_rotations, s2_tetra)
     print('------------------------')
     #################################
 
