@@ -8,12 +8,18 @@ import torch.nn as nn
 
 from geotransformer.modules.transformer import SinusoidalPositionalEmbedding, RPEConditionalTransformer
 import geotransformer.modules.transformer.utils_epn.anchors as L
+import sys 
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__),'../e2pn','vgtk') )
+import vgtk.so3conv as sptk
+import vgtk.functional as fr
+import numpy as np
 
 hidden_dim = 8
 num_heads = 2
 dropout = None
 activation_fn = 'ReLU'
-na = 12
+na = 4
 
 # r: rotation, a: anchor, self, cross_a_soft, self, cross_r_soft, invariant, self, cross_non_equivariant = false
 blocks = ['cross_r_soft', 'self_eq', 'cross_eq', 'cross_a_soft', 'cross_a_best', 'cross_r_best']
@@ -22,10 +28,16 @@ align_modes = ['0', '1', 'dual_early', 'dual_late']
 # permutation anchor index
 alternative_impls = [True, False]
 
-vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
-trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
-trace_idxR_ori, trace_idxR_rot = L.get_relativeR_index(vRs) # ra, ar
-trace_idxR_rot = trace_idxR_rot.swapaxes(0,1)   # ra
+if na == 12:
+    vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
+    trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
+    trace_idxR_ori, trace_idxR_rot = L.get_relativeR_index(vRs) # ra, ar
+    trace_idxR_rot = trace_idxR_rot.swapaxes(0,1)   # ra
+elif na == 4:
+    vs, v_adjs, vRs, ecs, face_normals = sptk.get_tetrahedron_vertices()
+    trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)
+    trace_idxR_ori, trace_idxR_rot = L.get_relativeR_index(vRs) # ra, ar
+    trace_idxR_rot = trace_idxR_rot.swapaxes(0,1)   # ra
 
 trace_idx_ori = torch.tensor(trace_idx_ori)
 trace_idx_rot = torch.tensor(trace_idx_rot)
@@ -90,9 +102,14 @@ def check_rot_permute(f2):
     # f2_permrot = f2_permute.gather(2, aori_kikj)
     ### use indexing
     lin_idx_b = torch.arange(3).reshape(-1,1,1)     # bra
-    lin_idx_r = torch.arange(60).reshape(1,-1,1)    # bra
-    idx = lin_idx_b * 60 + lin_idx_r
-    idx = idx * 12 + aori_kikj[None]    # bra
+    if na == 12:
+        lin_idx_r = torch.arange(60).reshape(1,-1,1)    # bra
+        idx = lin_idx_b * 60 + lin_idx_r
+        idx = idx * 12 + aori_kikj[None]    # bra
+    elif na == 4:
+        lin_idx_r = torch.arange(12).reshape(1,-1,1)    # bra
+        idx = lin_idx_b * 12 + lin_idx_r
+        idx = idx * 4 + aori_kikj[None]    # bra
     f2_permrot = f2_permute.flatten(0,2)[idx]
     # f2_permrot2 = f2_permute[:, :, trace_idx_rot[1]]
     
@@ -113,8 +130,8 @@ for block in blocks:
             if break_sig:
                 break
 
-            f1 = torch.normal(0, 1, size=(3, 12, 5, 8)) # banc
-            f2 = torch.normal(0, 1, size=(3, 12, 7, 8)) # bamc
+            f1 = torch.normal(0, 1, size=(3, na, 5, 8)) # banc
+            f2 = torch.normal(0, 1, size=(3, na, 7, 8)) # bamc
             p1 = torch.normal(0, 1, size=(3, 5, 5, 8)) # bnmc
             p2 = torch.normal(0, 1, size=(3, 7, 7, 8)) # bnmc
 
@@ -124,7 +141,7 @@ for block in blocks:
             ##################################
             transformer = RPEConditionalTransformer(
                         [block], hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn, 
-                        na=12, align_mode=align_mode, alternative_impl=alternative_impl,
+                        na=na, align_mode=align_mode, alternative_impl=alternative_impl,
                         return_attention_scores=True,
                     )
 
@@ -136,8 +153,9 @@ for block in blocks:
 
             # trace_idx_ori = torch.tensor(trace_idx_ori, dtype=torch.int64)
 
-            trace_idx_ori1 = trace_idx_ori[40]   # 12
-            trace_idx_rot1 = trace_idx_rot[40]   # 12
+            r_idx = np.random.randint(na)
+            trace_idx_ori1 = trace_idx_ori[r_idx]   # 12
+            trace_idx_rot1 = trace_idx_rot[r_idx]   # 12
             f2_permute = f2[:, trace_idx_rot1]
 
             # ### test that the indexing makes sense

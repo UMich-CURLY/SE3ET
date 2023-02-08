@@ -354,19 +354,29 @@ def get_relative_index():
 
 vs, v_adjs, v_level2s, v_opps, vRs = fr.icosahedron_trimesh_to_vertices(ANCHOR_PATH)    # 12*3, each vertex is of norm 1
 
+vs_tetra, v_adjs_tetra, vRs_tetra, ecs_tetra, face_normals_tetra = fr.tetrahedron_trimesh_to_vertices()
 
-def get_anchorsV():
+def get_anchorsV(tetra=False):
     """return 60*3*3 matrix as rotation anchors determined by the symmetry of icosahedron vertices"""
-    return vRs.copy()
+    if tetra:
+        return vRs_tetra.copy()
+    else:
+        return vRs.copy()
 
-def get_anchorsV12():
+def get_anchorsV12(tetra=False):
     """return 12*3*3 matrix as the section (representative rotation) of icosahedron vertices. 
     For each vertex on the sphere (icosahedron) (coset space S2 = SO(3)/SO(2)), 
     pick one rotation as its representation in SO(3), which is also called a section function (G/H -> G)"""
-    return vRs.reshape(12, 5, 3, 3)[:,0].copy()    # 12*3*3
+    if tetra:
+        return vRs_tetra.reshape(4, 3, 3, 3)[:,0].copy()    # 4*3*3
+    else:
+        return vRs.reshape(12, 5, 3, 3)[:,0].copy()    # 12*3*3
 
 def get_icosahedron_vertices():
     return vs.copy(), v_adjs.copy(), v_level2s.copy(), v_opps.copy(), vRs.copy()
+
+def get_tetrahedron_vertices():
+    return vs_tetra.copy(), v_adjs_tetra.copy(), vRs_tetra.copy(), ecs_tetra.copy(), face_normals_tetra.copy()
 
 def get_relativeV_index():
     """return two 60(rotation anchors)*12(indices on s2) index matrices"""

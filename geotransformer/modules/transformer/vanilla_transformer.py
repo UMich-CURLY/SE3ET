@@ -11,6 +11,12 @@ from einops import rearrange
 from geotransformer.modules.layers import build_dropout_layer
 from geotransformer.modules.transformer.output_layer import AttentionOutput
 import geotransformer.modules.transformer.utils_epn.anchors as L
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__),'../e2pn','vgtk') )
+import vgtk.so3conv as sptk
+import vgtk.functional as fr
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads, dropout=None):
@@ -69,7 +75,7 @@ class MultiHeadAttention(nn.Module):
 
         return hidden_states, attention_scores
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=12):
         super(MultiHeadAttentionEQ, self).__init__()
         if d_model % num_heads != 0:
             raise ValueError('`d_model` ({}) must be a multiple of `num_heads` ({}).'.format(d_model, num_heads))
@@ -88,6 +94,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_ra_soft = False
         self.attn_mode = attn_mode   # 'r_best' 'r_soft' 'a_best' 'a_soft'
         self.alternative_impl = alternative_impl
+        self.kanchor = kanchor
 
         self.proj_q = nn.Linear(self.d_model, self.d_model)
         self.proj_k = nn.Linear(self.d_model, self.d_model)
@@ -97,15 +104,27 @@ class MultiHeadAttentionEQ(nn.Module):
 
         self.init_anchors()
     def init_anchors(self):
-        # anchors = L.get_anchorsV()
-        vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
-        self.adj0 = v_adjs[0,0]
-        self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 60*3*3
-        trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
-        self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
-        self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
-        self.nr = trace_idx_ori.shape[0]
-        self.na = trace_idx_ori.shape[1]
+        if self.kanchor == 12:
+            # anchors = L.get_anchorsV()
+            vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 60*3*3
+            trace_idx_ori, trace_idx_rot = L.get_relativeV_index()  # 60*12, 60*12 (ra)
+            self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
+            self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
+            self.nr = trace_idx_ori.shape[0]
+            self.na = trace_idx_ori.shape[1]
+        elif self.kanchor == 4:
+            vs, v_adjs, vRs, ecs, face_normals = sptk.get_tetrahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)
+            self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
+            self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
+            self.nr = trace_idx_ori.shape[0]
+            self.na = trace_idx_ori.shape[1]
+        else:
+            raise NotImplementedError(f'self.kanchor={self.kanchor} not implemented')
         return
 
     def cross_anchor_attn_aa(self, q, k):
@@ -519,11 +538,11 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]    # , v_permute
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
-            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl)
+            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
         else:
             self.attention = MultiHeadAttention(d_model, num_heads, dropout=dropout)
         self.linear = nn.Linear(d_model, d_model)
@@ -555,10 +574,10 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
-        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl)
+        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(

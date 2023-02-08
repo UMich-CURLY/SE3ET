@@ -168,7 +168,7 @@ def get_adjmatrix_trimesh(mesh, gsize=None):
         R_adj = np.concatenate([R_adj, rp], axis=1)
         return R_adj
 
-def get_so3_from_anchors_np_zyz(face_normals, gsize=3):
+def get_so3_from_anchors_np_zyz(face_normals, gsize=3, tetra=False):
     # alpha, beta
     na = face_normals.shape[0]
     cbeta = face_normals[...,-1]
@@ -176,7 +176,7 @@ def get_so3_from_anchors_np_zyz(face_normals, gsize=3):
     calpha = face_normals[...,0] / sbeta
     salpha = face_normals[...,1] / sbeta
 
-    if gsize==5:
+    if gsize==5 or tetra:
         calpha = np.where(np.isnan(calpha) & (cbeta>0), np.ones_like(calpha), calpha)
         calpha = np.where(np.isnan(calpha) & (cbeta<0), -np.ones_like(calpha), calpha)
         salpha = np.where(np.isnan(salpha), np.zeros_like(salpha), salpha)
@@ -276,18 +276,21 @@ def get_so3_from_anchors_np_zyz(face_normals, gsize=3):
     # Rs4 = np.einsum('bij,bjh->bih', Rz, Ryx4)
 
     z_val = (face_normals[:, -1])[:, None].repeat(gsize, axis=1).reshape(na*gsize, 1, 1)
-    # import ipdb; ipdb.set_trace()
-    if gsize == 3:
-        Rs = Rs1*(np.abs(z_val+0.79)<0.01)+Rs2*(np.abs(z_val+0.19)<0.01)+\
-            Rs1*(np.abs(z_val-0.19)<0.01)+Rs2*(np.abs(z_val-0.79)<0.01)
-        # -0.7947, -0.1876, 0.1876, 0.7967
-        # each will make only one of the four conditions true
-    elif gsize == 5:
-        Rs = Rs2*(np.abs(z_val+1)<0.01)+Rs1*(np.abs(z_val+0.447)<0.01)+\
-            Rs2*(np.abs(z_val-0.447)<0.01)+Rs1*(np.abs(z_val-1)<0.01)
-        # Rs = Rs1
+    if tetra:
+        Rs = Rs1*(z_val>=0)+Rs2*(z_val<0)
     else:
-        raise NotImplementedError('gsizee other than 3 (for faces) or 5 (for vertices) are not supported: %d'%gsize)
+        # import ipdb; ipdb.set_trace()
+        if gsize == 3:
+            Rs = Rs1*(np.abs(z_val+0.79)<0.01)+Rs2*(np.abs(z_val+0.19)<0.01)+\
+                Rs1*(np.abs(z_val-0.19)<0.01)+Rs2*(np.abs(z_val-0.79)<0.01)
+            # -0.7947, -0.1876, 0.1876, 0.7967
+            # each will make only one of the four conditions true
+        elif gsize == 5:
+            Rs = Rs2*(np.abs(z_val+1)<0.01)+Rs1*(np.abs(z_val+0.447)<0.01)+\
+                Rs2*(np.abs(z_val-0.447)<0.01)+Rs1*(np.abs(z_val-1)<0.01)
+            # Rs = Rs1
+        else:
+            raise NotImplementedError('gsizee other than 3 (for faces) or 5 (for vertices) are not supported: %d'%gsize)
     return Rs
 
 def get_so3_from_anchors_np(face_normals, gsize=3):
@@ -384,6 +387,41 @@ def get_so3_from_anchors_np(face_normals, gsize=3):
 #     Rs = sciR.from_quat(quat).as_matrix()
 
 #     return Rs
+
+def tetrahedron_trimesh_to_vertices():
+    vertices = np.array([[0,0,3], 
+    [2*np.sqrt(2), 0, -1],
+    [-np.sqrt(2), np.sqrt(6), -1],
+    [-np.sqrt(2), -np.sqrt(6), -1],
+    ], dtype=np.float32)
+    vertices = vertices/3   # each vertex is of norm 1
+    faces=np.array([[0,1,2], [0,2,3],[0,3,1], [1,2,3]],dtype=int)
+    mesh = trimesh.base.Trimesh(vertices,faces)
+    mesh.fix_normals()
+    
+    # the 3 rotation matrices for each of the 4 vertices
+    Rs = get_so3_from_anchors_np_zyz(vertices, gsize=3, tetra=True)
+
+    # the index of the opposite vertex and the two five-vertex-ring for each vertex
+    v_adjs = np.array([[1,2,3], [2,3,0], [3,0,1], [0,1,2]])
+
+    ### edge centers
+    edges = mesh.edges_unique  # (6,2)
+    ecs = []
+    for edge in edges:
+        v1 = vertices[edge[0]]
+        v2 = vertices[edge[1]]
+        ec = (v1+v2)*0.5
+        ecs.append(ec)
+    ecs = np.array(ecs, dtype=np.float32)
+    ecs_norms = np.linalg.norm(ecs, axis=1, keepdims=True)
+    ecs = ecs / ecs_norms
+    
+    ### face centers
+    face_normals = mesh.face_normals    # (4,3)
+    face_normals = np.array(face_normals, dtype=np.float32)
+
+    return vertices, v_adjs, Rs, ecs, face_normals
 
 def icosahedron_trimesh_to_vertices(mesh_path):
     mesh = trimesh.load(mesh_path)  # trimesh 3.9 does not work. need 3.2
@@ -531,9 +569,11 @@ def icosahedron_so3_trimesh(mesh_path, gsize=3, use_quats=False):
     return Rs, trace_idx, canonical_R
     # return Rs, trace_idx, canonical_R
 
-def get_relativeR_index(Rs):
-    incr_r = np.einsum('dij,ajk->daik', Rs, Rs) # drotation*anchor
-    diff_r = np.einsum('bij,daik->bdajk', Rs, incr_r)
+def get_relativeR_index(Rs_act, Rs_upon=None):
+    if Rs_upon is None:
+        Rs_upon = Rs_act
+    incr_r = np.einsum('dij,ajk->daik', Rs_act, Rs_upon) # drotation*anchor
+    diff_r = np.einsum('bij,daik->bdajk', Rs_upon, incr_r)
     trace = 0.5 * (np.einsum('bdaii->bda', diff_r) - 1)
     trace_idx_ori = np.argmax(trace,axis=0) # bda -> da     # find correspinding original element for each rotated
     trace_idx_rot = np.argmax(trace,axis=2) # bda -> bd     # find corresponding rotated element for each original
