@@ -74,8 +74,9 @@ class MultiHeadAttention(nn.Module):
         hidden_states = rearrange(hidden_states, 'b h n c -> b n (h c)')
 
         return hidden_states, attention_scores
+
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=12):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=12, attn_r_summ='mean'):
         super(MultiHeadAttentionEQ, self).__init__()
         if d_model % num_heads != 0:
             raise ValueError('`d_model` ({}) must be a multiple of `num_heads` ({}).'.format(d_model, num_heads))
@@ -85,7 +86,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.d_model_per_head = d_model // num_heads
 
         self.kanchor = kanchor
-        self.quotient_factor = quotient_factor
+        # self.quotient_factor = quotient_factor
 
         self.attn_on_sub = False
         self.attn_r_summ = attn_r_summ    # 'mean' 'double_norm'
@@ -542,11 +543,11 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]    # , v_permute
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12, attn_r_summ='mean'):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
-            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
+            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_summ=attn_r_summ)
         else:
             self.attention = MultiHeadAttention(d_model, num_heads, dropout=dropout)
         self.linear = nn.Linear(d_model, d_model)
@@ -578,10 +579,10 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12, attn_r_summ='mean'):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
-        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
+        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_summ=attn_r_summ)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(

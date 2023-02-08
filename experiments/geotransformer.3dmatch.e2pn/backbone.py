@@ -70,6 +70,14 @@ class E2PNBackbone(nn.Module):
         for idx, s in enumerate(strides):
             weighted_sigma.append(weighted_sigma[idx] * s)
 
+        params['equi2inv'] = {
+            'dim_in': mlps[0][0],
+            'mlp': [mlps[0][0], output_dim],
+            'pooling': so3_pooling,
+            'temperature': temperature,
+            'kanchor': na,
+        }
+
         for i, block in enumerate(mlps):
             block_param = []
             for j, dim_out in enumerate(block):
@@ -93,10 +101,12 @@ class E2PNBackbone(nn.Module):
                     inter_stride = 1
                     nidx = i+1
 
-                # one-inter one-intra policy
+                # one-inter one-intra policy                
                 if na == 60:
                     block_type = 'separable_block' 
                 elif na == 12:
+                    block_type = 'separable_s2_block'
+                elif na == 4:
                     block_type = 'separable_s2_block'
                 elif na < 60:
                     block_type = 'inter_block'
@@ -140,6 +150,8 @@ class E2PNBackbone(nn.Module):
 
         self.outblock = FinalLinear(params['outblock'])
 
+        self.equi2inv = FinalLinear(params['equi2inv'])
+
         self.na_in = params['na']
 
     def forward(self, x):
@@ -148,7 +160,7 @@ class E2PNBackbone(nn.Module):
             x (Tensor): (N, 3) one input pointcloud
         Returns:
             feat_c (Tensor): (A, N'', C) output features
-            feat_f (Tensor): (A, N', C) output features
+            feat_f (Tensor): (N', C) output finer invariant features for fine matching
             points_c (Tensor): (N'', 3) output features
             points_f (Tensor): (N', 3) output features
             feat_inv_c (Tensor): (N'', C) output features
@@ -161,11 +173,12 @@ class E2PNBackbone(nn.Module):
         for block_i, block in enumerate(self.backbone):
             x = block(x)
             if block_i == 0:
+                x_f = self.equi2inv(x)
                 points_f = x.xyz.clone().detach().transpose(-1, -2).squeeze(0) # fine points are the points after the first striding
-                feat_f = x.feats.clone().detach().permute(0, 3, 2, 1).squeeze(0)
+                feat_f = x_f.clone().detach().squeeze(0)
 
         points_c = x.xyz.clone().detach().transpose(-1, -2).squeeze(0) # coarse points are the last points
-        feat_c = x.feats.clone().detach().permute(0, 3, 2, 1).squeeze(0)
+        feat_c = x.feats.clone().detach().permute(0, 3, 2, 1).squeeze(0)      
 
         # TODO: upsample feature for fine matching
 

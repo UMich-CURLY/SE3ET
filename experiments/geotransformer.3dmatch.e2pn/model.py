@@ -129,11 +129,8 @@ class GeoTransformer(nn.Module):
             src_feats_c.unsqueeze(0),
         )
 
-        print('ref_feats_c after transformer', ref_feats_c.shape)
-        print('src_feats_c after transformer', src_feats_c.shape)
-
-        ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=2) # dim=2 is number of points
-        src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=2) # dim=2 is number of points
+        ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
+        src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
 
         output_dict['ref_feats_c'] = ref_feats_c_norm
         output_dict['src_feats_c'] = src_feats_c_norm
@@ -147,10 +144,6 @@ class GeoTransformer(nn.Module):
             ref_node_corr_indices, src_node_corr_indices, node_corr_scores = self.coarse_matching(
                 ref_feats_c_norm, src_feats_c_norm, ref_node_masks, src_node_masks
             )
-
-            print('ref_node_corr_indices', ref_node_corr_indices.shape)
-            print('src_node_corr_indices', src_node_corr_indices.shape)
-            print('node_corr_scores', node_corr_scores.shape)
 
             output_dict['ref_node_corr_indices'] = ref_node_corr_indices
             output_dict['src_node_corr_indices'] = src_node_corr_indices
