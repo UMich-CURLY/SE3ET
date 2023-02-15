@@ -325,7 +325,7 @@ class MultiHeadAttentionEQ(nn.Module):
                     attention_scores = torch.einsum('bahnc,bahmc->bahnm', q, k_permute) \
                                             / self.d_model_per_head ** 0.5
                 else:
-                    lin_idx_b = torch.arange(b).reshape(-1,1) # b,1
+                    lin_idx_b = torch.arange(b, device=trace_idx_ori.device).reshape(-1,1) # b,1
                     trace_idx_ori = lin_idx_b * self.na + trace_idx_ori   # b,a
                     k_permute = k.flatten(0,1)[trace_idx_ori] #bahmc
                     attention_scores = torch.einsum('bahnc,bahmc->bahnm', q, k_permute) \
