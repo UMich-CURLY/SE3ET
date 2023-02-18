@@ -105,17 +105,19 @@ class RPEConditionalTransformer(nn.Module):
         na=12,
         align_mode='0',
         alternative_impl=False,
+        d_equiv_embed=0,
     ):
         super(RPEConditionalTransformer, self).__init__()
         self.blocks = blocks
         self.align_mode = align_mode    # '0', '1', 'dual_early', 'dual_late'
         self.alternative_impl = alternative_impl
+        self.d_equiv_embed = d_equiv_embed
         layers = []
         for block in self.blocks:
             _check_block_type(block)
             equivariant = _check_block_eq(block)
             if 'self' in block:
-                layers.append(RPETransformerLayer(d_model, num_heads, dropout=dropout, activation_fn=activation_fn, equivariant=equivariant))
+                layers.append(RPETransformerLayer(d_model, num_heads, dropout=dropout, activation_fn=activation_fn, equivariant=equivariant, d_equiv_embed=d_equiv_embed))
             else:
                 assert 'cross' in block, block
                 attn_mode = _check_block_attn_mode(block)
@@ -200,12 +202,12 @@ class RPEConditionalTransformer(nn.Module):
             feats1 = feats1_inv
         return feats0, feats1
 
-    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None):
+    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, equiv_embed0=None, equiv_embed1=None):
         attention_scores = []
         for i, block in enumerate(self.blocks):
             if 'self' in block:
-                feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0)
-                feats1, scores1 = self.layers[i](feats1, feats1, embeddings1, memory_masks=masks1)
+                feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
+                feats1, scores1 = self.layers[i](feats1, feats1, embeddings1, memory_masks=masks1, equiv_states=equiv_embed1)
             else:
                 assert 'cross' in block, block
                 if self.parallel:
