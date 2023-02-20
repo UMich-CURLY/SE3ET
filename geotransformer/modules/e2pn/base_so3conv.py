@@ -1042,7 +1042,8 @@ class FinalLinear(nn.Module):
         # x.feats = (bs, c_in, np, na)
         if x.feats.shape[-1] > 1:
             # feat = torch.sum(x.feats, -1, keepdim=True)
-            feat, _ = torch.max(x.feats, -1, keepdim=True)
+            # feat, _ = torch.max(x.feats, -1, keepdim=True)
+            feat = torch.amax(x.feats, -1, keepdim=True)
             # feat = torch.mean(x.feats, -1, keepdim=True)
         feat = feat.squeeze(-1).permute(0, 2, 1)
 

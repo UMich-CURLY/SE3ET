@@ -13,9 +13,9 @@ from geotransformer.utils.pointcloud import (
     get_transform_from_rotation_translation,
 )
 from geotransformer.utils.registration import get_correspondences
-from scipy.spatial.transform import Rotation as R
 
-class ThreeDMatchPairDataset(torch.utils.data.Dataset):
+
+class ThreeDMatchOnePairDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         dataset_root,
@@ -29,7 +29,7 @@ class ThreeDMatchPairDataset(torch.utils.data.Dataset):
         matching_radius=None,
         rotated=False,
     ):
-        super(ThreeDMatchPairDataset, self).__init__()
+        super(ThreeDMatchOnePairDataset, self).__init__()
 
         self.dataset_root = dataset_root
         self.metadata_root = osp.join(self.dataset_root, 'metadata')
@@ -53,18 +53,10 @@ class ThreeDMatchPairDataset(torch.utils.data.Dataset):
             self.metadata_list = pickle.load(f)
             if self.overlap_threshold is not None:
                 self.metadata_list = [x for x in self.metadata_list if x['overlap'] > self.overlap_threshold]
-
-            # print(len(self.metadata_list), 'data loaded for', self.subset)
-            # print('metadata_list', self.metadata_list[0])
-            # rotation_list = []
-            # translation_list = []
-            # for i in range(len(self.metadata_list)):
-            #     rotation_list.append(self.metadata_list[i]['rotation'])
-            #     translation_list.append(self.metadata_list[i]['translation'])
-            # r = R.from_matrix(rotation_list)            
-            # print('rotation mean', r.mean().as_euler('zyx', degrees=True))
-            # translation_np = np.array(translation_list)
-            # print('translation mean', np.mean(translation_np, axis=0), 'std', np.std(translation_np, axis=0))
+            if subset == 'train':
+                self.metadata_list =  self.metadata_list[:1]
+            elif subset == 'val':
+                self.metadata_list =  self.metadata_list[:1]
 
     def __len__(self):
         return len(self.metadata_list)

@@ -63,7 +63,8 @@ class GeometricStructureEmbedding(nn.Module):
         a_embeddings = self.embedding(a_indices)
         a_embeddings = self.proj_a(a_embeddings)
         if self.reduction_a == 'max':
-            a_embeddings = a_embeddings.max(dim=3)[0]
+            # a_embeddings = a_embeddings.max(dim=3)[0]
+            a_embeddings = a_embeddings.amax(dim=3)
         else:
             a_embeddings = a_embeddings.mean(dim=3)
 
@@ -86,7 +87,7 @@ class GeometricTransformer(nn.Module):
         dropout=None,
         activation_fn='ReLU',
         reduction_a='max',
-        kanchor=12,
+        kanchor=None,
         quotient_factor=5,
         align_mode='0',
         alternative_impl=False,
@@ -111,15 +112,18 @@ class GeometricTransformer(nn.Module):
         self.embedding = GeometricStructureEmbedding(hidden_dim, sigma_d, sigma_a, angle_k, reduction_a=reduction_a)
 
         self.in_proj = nn.Linear(input_dim, hidden_dim)
-        # self.transformer = RPEConditionalTransformer(
-        #     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn
-        # )
-        # transformer that handle equivariant features
-        self.transformer = RPEConditionalTransformer(
-                                    blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn, 
-                                    kanchor=kanchor, quotient_factor=quotient_factor, align_mode=align_mode, alternative_impl=alternative_impl,
-                                    return_attention_scores=False, attn_r_summ=attn_r_summ,
-                                )
+        self.kanchor = kanchor
+        if self.kanchor is None:
+            self.transformer = RPEConditionalTransformer(
+                blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn
+            )
+        else:
+            # transformer that handle equivariant features
+            self.transformer = RPEConditionalTransformer(
+                                        blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn, 
+                                        kanchor=kanchor, quotient_factor=quotient_factor, align_mode=align_mode, alternative_impl=alternative_impl,
+                                        return_attention_scores=False, attn_r_summ=attn_r_summ,
+                                    )
         self.out_proj = nn.Linear(hidden_dim, output_dim)
 
     def forward(
@@ -148,29 +152,28 @@ class GeometricTransformer(nn.Module):
         ref_embeddings = self.embedding(ref_points)
         src_embeddings = self.embedding(src_points)
 
-        # ref_feats = self.in_proj(ref_feats)
-        # src_feats = self.in_proj(src_feats)
+        if self.kanchor is None:
+            ref_feats = self.in_proj(ref_feats)
+            src_feats = self.in_proj(src_feats)
 
-        # ref_feats, src_feats = self.transformer(
-        #     ref_feats,
-        #     src_feats,
-        #     ref_embeddings,
-        #     src_embeddings,
-        #     masks0=ref_masks,
-        #     masks1=src_masks,
-        # )
+            ref_feats, src_feats = self.transformer(
+                ref_feats,
+                src_feats,
+                ref_embeddings,
+                src_embeddings,
+                masks0=ref_masks,
+                masks1=src_masks,
+            )
 
-        # ref_feats = self.out_proj(ref_feats)
-        # src_feats = self.out_proj(src_feats)
-
-        # Use equivairant features from E2PN and geometric embeddings
-        ref_feats, src_feats = self.transformer(
-            ref_feats,
-            src_feats,
-            ref_embeddings,
-            src_embeddings,
-        )
-
-
+            ref_feats = self.out_proj(ref_feats)
+            src_feats = self.out_proj(src_feats)
+        else:
+            # Use equivairant features from E2PN and geometric embeddings
+            ref_feats, src_feats = self.transformer(
+                ref_feats,
+                src_feats,
+                ref_embeddings,
+                src_embeddings,
+            )
 
         return ref_feats, src_feats

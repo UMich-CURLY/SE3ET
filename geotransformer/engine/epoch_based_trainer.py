@@ -11,6 +11,7 @@ from geotransformer.utils.torch import to_cuda
 from geotransformer.utils.summary_board import SummaryBoard
 from geotransformer.utils.timer import Timer
 from geotransformer.utils.common import get_log_string
+from geotransformer.utils.memory import gpu_mem_usage
 
 
 class EpochBasedTrainer(BaseTrainer):

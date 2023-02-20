@@ -104,7 +104,8 @@ def max_pool(x, inds):
     pool_features = gather(x, inds)
 
     # Pool the maximum [n2, d]
-    max_features, _ = torch.max(pool_features, 1)
+    # max_features, _ = torch.max(pool_features, 1)
+    max_features = torch.amax(pool_features, 1)
     return max_features
 
 

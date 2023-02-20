@@ -1,4 +1,5 @@
 from geotransformer.datasets.registration.threedmatch.dataset import ThreeDMatchPairDataset
+from geotransformer.datasets.registration.threedmatch_small.dataset import ThreeDMatchPairSmallDataset
 from geotransformer.utils.data import (
     registration_collate_fn_stack_mode,
     calibrate_neighbors_stack_mode,
@@ -7,7 +8,7 @@ from geotransformer.utils.data import (
 
 
 def train_valid_data_loader(cfg, distributed):
-    train_dataset = ThreeDMatchPairDataset(
+    train_dataset = ThreeDMatchPairSmallDataset(
         cfg.data.dataset_root,
         'train',
         point_limit=cfg.train.point_limit,
@@ -35,7 +36,7 @@ def train_valid_data_loader(cfg, distributed):
         distributed=distributed,
     )
 
-    valid_dataset = ThreeDMatchPairDataset(
+    valid_dataset = ThreeDMatchPairSmallDataset(
         cfg.data.dataset_root,
         'val',
         point_limit=cfg.test.point_limit,
