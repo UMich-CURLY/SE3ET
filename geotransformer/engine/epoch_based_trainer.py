@@ -11,8 +11,7 @@ from geotransformer.utils.torch import to_cuda
 from geotransformer.utils.summary_board import SummaryBoard
 from geotransformer.utils.timer import Timer
 from geotransformer.utils.common import get_log_string
-from geotransformer.utils.memory import gpu_mem_usage
-
+from geotransformer.utils.memory import gpu_mem_usage, reset_mem_usage
 
 class EpochBasedTrainer(BaseTrainer):
     def __init__(
@@ -81,6 +80,7 @@ class EpochBasedTrainer(BaseTrainer):
             ipdb.set_trace()
 
     def train_epoch(self):
+        reset_mem_usage()
         if self.distributed:
             self.train_loader.sampler.set_epoch(self.epoch)
         self.before_train_epoch(self.epoch)
@@ -104,7 +104,8 @@ class EpochBasedTrainer(BaseTrainer):
             self.after_train_step(self.epoch, self.inner_iteration, data_dict, output_dict, result_dict)
             result_dict = self.release_tensors(result_dict)
             self.summary_board.update_from_result_dict(result_dict)
-            # logging
+            # logging            
+            max_mem = gpu_mem_usage()
             if self.inner_iteration % self.log_steps == 0:
                 summary_dict = self.summary_board.summary()
                 message = get_log_string(
@@ -115,12 +116,15 @@ class EpochBasedTrainer(BaseTrainer):
                     max_iteration=total_iterations,
                     lr=self.get_lr(),
                     timer=self.timer,
+                    mem=max_mem,
                 )
                 self.logger.info(message)
                 self.write_event('train', summary_dict, self.iteration)
             torch.cuda.empty_cache()
         self.after_train_epoch(self.epoch)
-        message = get_log_string(self.summary_board.summary(), epoch=self.epoch, timer=self.timer)
+        max_mem = gpu_mem_usage()
+        print('max memory usage (GB)', max_mem)
+        message = get_log_string(self.summary_board.summary(), epoch=self.epoch, timer=self.timer, mem=max_mem)
         self.logger.critical(message)
         # scheduler
         if self.scheduler is not None:
@@ -132,7 +136,8 @@ class EpochBasedTrainer(BaseTrainer):
             if osp.exists(last_snapshot):
                 os.remove(last_snapshot)
 
-    def inference_epoch(self):
+    def inference_epoch(self):        
+        reset_mem_usage()
         self.set_eval_mode()
         self.before_val_epoch(self.epoch)
         summary_board = SummaryBoard(adaptive=True)
@@ -150,18 +155,22 @@ class EpochBasedTrainer(BaseTrainer):
             self.after_val_step(self.epoch, self.inner_iteration, data_dict, output_dict, result_dict)
             result_dict = self.release_tensors(result_dict)
             summary_board.update_from_result_dict(result_dict)
+            max_mem = gpu_mem_usage()
             message = get_log_string(
                 result_dict=summary_board.summary(),
                 epoch=self.epoch,
                 iteration=self.inner_iteration,
                 max_iteration=total_iterations,
                 timer=timer,
+                mem=max_mem,
             )
             pbar.set_description(message)
             torch.cuda.empty_cache()
         self.after_val_epoch(self.epoch)
+        max_mem = gpu_mem_usage()
+        print('max memory usage (GB):', max_mem)
         summary_dict = summary_board.summary()
-        message = '[Val] ' + get_log_string(summary_dict, epoch=self.epoch, timer=timer)
+        message = '[Val] ' + get_log_string(summary_dict, epoch=self.epoch, timer=timer, mem=max_mem)
         self.logger.critical(message)
         self.write_event('val', summary_dict, self.epoch)
         self.set_train_mode()

@@ -61,11 +61,14 @@ CUDA_VISIBLE_DEVICES=0 python trainval.py
 ```
 #### Training with E2PN
 
-The code for 3DMatch is in `experiments/geotransformer.3dmatch.e2pn`. Use the following command for training.
+The code for 3DMatch is in `experiments/e2pntransformer.3dmatchsmall.inv.exp4`. Use the following command for training.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python trainval.py
 ```
+For experiment, you can copy the `experiments/e2pntransformer.3dmatchsmall.inv.exp4` folder or create a new folder under `experiments`. Inside the folder, change `config.py` and `backbone.py` accordingly. If GPU memory is limited, lower `train.point_limit`, `test.point_limit`, `backbone.init_dim`, `backbone.output_dim`, `geotransformer.input_dim`, `geotransformer.hidden_dim`, `geotransformer.output_dim`.
+
+For invariant feature encoder, `geotransformer.blocks` is set as `['self', 'cross', 'self', 'cross', 'self', 'cross']` and the initialization of the `GeometricTransformer` in `model.py` doesn't include `kanchor` arguement. 
 
 ### Testing
 
