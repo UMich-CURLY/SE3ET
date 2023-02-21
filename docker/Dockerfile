@@ -46,6 +46,7 @@ RUN pip install ipdb
 RUN pip install tensorboardX
 RUN pip install setuptools==59.5.0
 RUN pip install yacs
+RUN pip install --upgrade e3nn
 
 # CUDA memory utils
 RUN pip install pytorch_memlab

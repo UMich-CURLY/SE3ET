@@ -76,7 +76,7 @@ class MultiHeadAttention(nn.Module):
         return hidden_states, attention_scores
 
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=12):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=4):
         """
         The equivariant attention has four steps. 
             1. calculate the local attention matrix (per-point-pair, per-anchor-pair inner products);
@@ -117,7 +117,6 @@ class MultiHeadAttentionEQ(nn.Module):
         self.num_heads = num_heads
         self.d_model_per_head = d_model // num_heads
 
-        self.kanchor = kanchor
         # self.quotient_factor = quotient_factor
 
         self.attn_on_sub = False
@@ -618,7 +617,7 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]    # , v_permute
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12, attn_r_summ='mean'):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_summ='mean'):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
@@ -654,7 +653,7 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=12, attn_r_summ='mean'):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_summ='mean'):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
         self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_summ=attn_r_summ)
