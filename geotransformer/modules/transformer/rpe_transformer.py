@@ -16,7 +16,7 @@ from geotransformer.modules.transformer.output_layer import AttentionOutput
 
 
 class RPEMultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, d_equiv_embed=0):
         super(RPEMultiHeadAttention, self).__init__()
         if d_model % num_heads != 0:
             raise ValueError('`d_model` ({}) must be a multiple of `num_heads` ({}).'.format(d_model, num_heads))
@@ -30,24 +30,28 @@ class RPEMultiHeadAttention(nn.Module):
         self.proj_k = nn.Linear(self.d_model, self.d_model)
         self.proj_v = nn.Linear(self.d_model, self.d_model)
         self.proj_p = nn.Linear(self.d_model, self.d_model)
+        self.d_equiv_embed = d_equiv_embed
+        if self.equivariant and self.d_equiv_embed > 0:
+            self.proj_eq = nn.Linear(self.d_equiv_embed, self.d_model)
 
         self.dropout = build_dropout_layer(dropout)
 
-    def forward(self, input_q, input_k, input_v, embed_qk, key_weights=None, key_masks=None, attention_factors=None):
+    def forward(self, input_q, input_k, input_v, embed_qk, key_weights=None, key_masks=None, attention_factors=None, embed_eq=None):
         r"""Scaled Dot-Product Attention with Pre-computed Relative Positional Embedding (forward)
 
         Args:
-            input_q: torch.Tensor (B, N, C)
-            input_k: torch.Tensor (B, M, C)
-            input_v: torch.Tensor (B, M, C)
+            input_q: torch.Tensor (B, [A], N, C)
+            input_k: torch.Tensor (B, [A], M, C)
+            input_v: torch.Tensor (B, [A], M, C)
             embed_qk: torch.Tensor (B, N, M, C), relative positional embedding
             key_weights: torch.Tensor (B, M), soft masks for the keys
             key_masks: torch.Tensor (B, M), True if ignored, False if preserved
             attention_factors: torch.Tensor (B, N, M)
+            embed_eq: torch.Tensor (B, A, N, M, C_eq)
 
         Returns:
-            hidden_states: torch.Tensor (B, C, N)
-            attention_scores: torch.Tensor (B, H, N, M)
+            hidden_states: torch.Tensor (B, [A], N, C)
+            attention_scores: torch.Tensor (B, [A], H, N, M)
         """
         if self.equivariant:
             q = rearrange(self.proj_q(input_q), 'b a n (h c) -> b a h n c', h=self.num_heads)
@@ -57,6 +61,12 @@ class RPEMultiHeadAttention(nn.Module):
             
             attention_scores_p = torch.einsum('bahnc,bhnmc->bahnm', q, p)
             attention_scores_e = torch.einsum('bahnc,bahmc->bahnm', q, k)
+
+            if self.d_equiv_embed > 0:
+                assert embed_eq is not None, 'Equivariant embedding required here.'
+                eq = rearrange(self.proj_eq(embed_eq), 'b a n m (h c) -> b a h n m c', h=self.num_heads)
+                attention_scores_eq = torch.einsum('bahnc,bahnmc->bahnm', q, eq)
+
         else:
             q = rearrange(self.proj_q(input_q), 'b n (h c) -> b h n c', h=self.num_heads)
             k = rearrange(self.proj_k(input_k), 'b m (h c) -> b h m c', h=self.num_heads)
@@ -66,7 +76,11 @@ class RPEMultiHeadAttention(nn.Module):
             attention_scores_p = torch.einsum('bhnc,bhnmc->bhnm', q, p)
             attention_scores_e = torch.einsum('bhnc,bhmc->bhnm', q, k)
 
-        attention_scores = (attention_scores_e + attention_scores_p) / self.d_model_per_head ** 0.5
+        if self.equivariant and self.d_equiv_embed > 0:
+            attention_scores = (attention_scores_e + attention_scores_p + attention_scores_eq) / self.d_model_per_head ** 0.5
+        else:
+            attention_scores = (attention_scores_e + attention_scores_p) / self.d_model_per_head ** 0.5
+
         if attention_factors is not None:
             if self.equivariant:
                 attention_scores = attention_factors.unsqueeze(1).unsqueeze(1) * attention_scores
@@ -97,9 +111,9 @@ class RPEMultiHeadAttention(nn.Module):
 
 
 class RPEAttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, d_equiv_embed=0):
         super(RPEAttentionLayer, self).__init__()
-        self.attention = RPEMultiHeadAttention(d_model, num_heads, dropout=dropout, equivariant=equivariant)
+        self.attention = RPEMultiHeadAttention(d_model, num_heads, dropout=dropout, equivariant=equivariant, d_equiv_embed=d_equiv_embed)
         self.linear = nn.Linear(d_model, d_model)
         self.dropout = build_dropout_layer(dropout)
         self.norm = nn.LayerNorm(d_model)
@@ -112,6 +126,7 @@ class RPEAttentionLayer(nn.Module):
         memory_weights=None,
         memory_masks=None,
         attention_factors=None,
+        equiv_states=None,
     ):
         hidden_states, attention_scores = self.attention(
             input_states,
@@ -121,6 +136,7 @@ class RPEAttentionLayer(nn.Module):
             key_weights=memory_weights,
             key_masks=memory_masks,
             attention_factors=attention_factors,
+            embed_eq=equiv_states,
         )
         hidden_states = self.linear(hidden_states)
         hidden_states = self.dropout(hidden_states)
@@ -129,9 +145,9 @@ class RPEAttentionLayer(nn.Module):
 
 
 class RPETransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, d_equiv_embed=0):
         super(RPETransformerLayer, self).__init__()
-        self.attention = RPEAttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant)
+        self.attention = RPEAttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, d_equiv_embed=d_equiv_embed)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(
@@ -142,6 +158,7 @@ class RPETransformerLayer(nn.Module):
         memory_weights=None,
         memory_masks=None,
         attention_factors=None,
+        equiv_states=None,
     ):
         hidden_states, attention_scores = self.attention(
             input_states,
@@ -150,6 +167,7 @@ class RPETransformerLayer(nn.Module):
             memory_weights=memory_weights,
             memory_masks=memory_masks,
             attention_factors=attention_factors,
+            equiv_states=equiv_states,
         )
         output_states = self.output(hidden_states)
         return output_states, attention_scores

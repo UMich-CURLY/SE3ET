@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 
 from geotransformer.modules.transformer import SinusoidalPositionalEmbedding, RPEConditionalTransformer
+from geotransformer.modules.geotransformer import GeometricTransformer
 import geotransformer.modules.transformer.utils_epn.anchors as L
 import sys 
 import os
@@ -15,11 +16,17 @@ import vgtk.so3conv as sptk
 import vgtk.functional as fr
 import numpy as np
 
-hidden_dim = 8
+input_dim = 8
+output_dim = 8
+hidden_dim = 16
+sigma_d = 0.2
+sigma_a = 15
+angle_k = 3
 num_heads = 2
 dropout = None
 activation_fn = 'ReLU'
 na = 4
+n_level_equiv = 5
 
 kanchors = [12, 60, 3, 3]
 quotient_factors = [5, 1, 1, 2]
@@ -175,101 +182,107 @@ for kanchor, quotient_factor in zip(kanchors, quotient_factors):
             if break_sig:
                 break
 
-            f1 = torch.normal(0, 1, size=(3, na, 5, 8)) # banc
-            f2 = torch.normal(0, 1, size=(3, na, 7, 8)) # bamc
-            p1 = torch.normal(0, 1, size=(3, 5, 5, 8)) # bnmc
-            p2 = torch.normal(0, 1, size=(3, 7, 7, 8)) # bnmc
-
-
             # break_sig = True
-
             ##################################
-            transformer = RPEConditionalTransformer(
-                        [block], hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn, 
-                        na=na, align_mode=align_mode, alternative_impl=alternative_impl,
-                        return_attention_scores=True,
-                    )
-
-
-            # o1, o2, v_0, v_1 = transformer(f2, f2, p2, p2)
-            # o1, o2, atts, v_0, v_1 = transformer(f2, f2, p2, p2)
-            o1, o2, atts = transformer(f1, f2, p1, p2)
-            print('shape o1 o2', o1.shape, o2.shape)
-
-            # trace_idx_ori = torch.tensor(trace_idx_ori, dtype=torch.int64)
-
+            ref_feats = torch.normal(0, 1, size=(2, na, 5, input_dim)) # banc
+            src_feats = torch.normal(0, 1, size=(2, na, 7, input_dim)) # bamc
+            ref_points = torch.normal(0, 1, size=(2, 5, 3)) # bnmc
+            src_points = torch.normal(0, 1, size=(2, 7, 3)) # bnmc
+            
             r_idx = np.random.randint(na)
             trace_idx_ori1 = trace_idx_ori[r_idx]   # 12
             trace_idx_rot1 = trace_idx_rot[r_idx]   # 12
-            f2_permute = f2[:, trace_idx_rot1]
+            src_feats_rot = src_feats[:, trace_idx_rot1]
+            src_points_rot = torch.matmul(vRs[r_idx], src_points.unsqueeze(-1)).squeeze(-1)
 
-            # ### test that the indexing makes sense
-            # f2_permute2 = f2_permute[:, trace_idx_ori1]
-            # max_err = torch.max((f2_permute2 - f2).abs())
-            # print("max err:", max_err)     # 0
+            transformer = GeometricTransformer(
+                input_dim,
+                output_dim,
+                hidden_dim,
+                num_heads,
+                blocks,
+                sigma_d,
+                sigma_a,
+                angle_k,
+                dropout=None,
+                activation_fn='ReLU',
+                reduction_a='max',
+                na=na,
+                align_mode=align_mode,
+                alternative_impl=alternative_impl,
+                n_level_equiv=n_level_equiv,
+            )
+            o1, o2 = transformer(
+                        ref_points,
+                        src_points,
+                        ref_feats,
+                        src_feats,)
+                        
+            o1_rot, o2_rot = transformer(
+                        ref_points,
+                        src_points_rot,
+                        ref_feats,
+                        src_feats_rot,)
 
-            # o1_permute, o2_permute, v_permute0, v_permute1 = transformer(f2, f2_permute, p2, p2)
-            o1_permute, o2_permute, atts_permute= transformer(f1, f2_permute, p1, p2)   # , v_permute0, v_permute1 
+            # ##################################
+            # f1 = torch.normal(0, 1, size=(3, na, 5, 8)) # banc
+            # f2 = torch.normal(0, 1, size=(3, na, 7, 8)) # bamc
+            # p1 = torch.normal(0, 1, size=(3, 5, 5, 8)) # bnmc
+            # p2 = torch.normal(0, 1, size=(3, 7, 7, 8)) # bnmc
 
-            # att_r0 = atts[0][0][:, 5]
-            # att_r1inv1 = atts_permute[0][0][:, 1]
-            # max_err = torch.max((att_r0 - att_r1inv1).abs())
-            # print("max err v:", max_err)    # checked
-            # max_err = torch.max((o1_permute - o1).abs())
-            # print("max err v2:", max_err)    # no
+            # r_idx = np.random.randint(na)
+            # trace_idx_ori1 = trace_idx_ori[r_idx]   # 12
+            # trace_idx_rot1 = trace_idx_rot[r_idx]   # 12
+            # f2_permute = f2[:, trace_idx_rot1]
 
-
-            # v1_r0 = v_1[:, 5]
-            # v1_r1inv1 = v_permute1[:, 1]
-            # max_err = torch.max((v1_r0 - v1_r1inv1).abs())
-            # print("max err v3:", max_err)    # checked
-            
-            # hidden_states = torch.einsum('bahnm,bahmc->bahnc', atts[0][0][:, 5], v_1[:, 5])
-            # hidden_states_r1inv1 = torch.einsum('bahnm,bahmc->bahnc', atts_permute[0][0][:, 1], v_permute1[:, 1])
-            # max_err = torch.max((hidden_states - hidden_states_r1inv1).abs())
-            # print("max err v4:", max_err)    # yes
-
-
-            # brot_ik = torch.tensor(trace_idxR_rot[1]).reshape(-1,1)
-            # brot_kik = torch.gather(torch.tensor(trace_idxR_rot), 1, brot_ik) # r*1
-            # aori_kikj = trace_idx_ori[brot_kik.reshape(-1)] # ra
-            # lin_idx_b = torch.arange(3).reshape(-1,1,1)     # bra
-            # lin_idx_r = torch.arange(60).reshape(1,-1,1)    # bra
-            # idx = lin_idx_b * 60 + lin_idx_r
-            # idx = idx * 12 + aori_kikj[None]    # bra
-            # atts_lateperm = atts[0][0].flatten(0,2)[idx]
-            # v_1_lateperm = v_1.flatten(0,2)[idx]
-            # print("v_permute1:", v_permute1.shape)
-            # print("v_1_lateperm:", v_1_lateperm.shape)
-            # print("atts_permute[0][0]:", atts_permute[0][0].shape)
-            # print("atts_lateperm:", atts_lateperm.shape)
-            
-            # # atts_lateperm = atts[0][0][:, trace_idx_rot_perm]
-            # # v_1_lateperm = v_1[:, trace_idx_rot_perm]
-            # max_err = torch.max((atts_permute[0][0] - atts_lateperm).abs())
-            # print("max err v6:", max_err)    # no
-            # max_err = torch.max((v_permute1 - v_1_lateperm).abs())
-            # print("max err v7:", max_err)    # no
+            # transformer = RPEConditionalTransformer(
+            #             [block], hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn, 
+            #             na=na, align_mode=align_mode, alternative_impl=alternative_impl,
+            #             return_attention_scores=True,
+            #         )
 
 
-            # hidden_states = torch.einsum('brahnm,brahmc->bahnc', atts[0][0], v_1)
-            # # hidden_states = torch.einsum('brahnm,brahmc->bahnc', atts_lateperm, v_1_lateperm)
-            # hidden_states_r1inv1 = torch.einsum('brahnm,brahmc->bahnc', atts_permute[0][0], v_permute1)
-            # max_err = torch.max((hidden_states - hidden_states_r1inv1).abs())
-            # print("max err v5:", max_err)    # no
+            # # o1, o2, v_0, v_1 = transformer(f2, f2, p2, p2)
+            # # o1, o2, atts, v_0, v_1 = transformer(f2, f2, p2, p2)
+            # o1, o2, atts = transformer(f1, f2, p1, p2)
 
-            try:
-                o2_permute_late = o2[:, trace_idx_rot1]
-            except Exception as e:
-                print('block', block)
-                print('align_mode', align_mode)
-                print('alternative_impl', alternative_impl)
-                raise ValueError(e)
+            # print('shape o1 o2', o1.shape, o2.shape)
 
-            max_err = torch.max((o2_permute - o2_permute_late).abs())
-            print("max err:", max_err)
-            if max_err > 1e-4:
-                print('block', block)
-                print('align_mode', align_mode)
-                print('alternative_impl', alternative_impl)
-                break_sig = True
+            # # trace_idx_ori = torch.tensor(trace_idx_ori, dtype=torch.int64)
+
+            # # ### test that the indexing makes sense
+            # # f2_permute2 = f2_permute[:, trace_idx_ori1]
+            # # max_err = torch.max((f2_permute2 - f2).abs())
+            # # print("max err:", max_err)     # 0
+
+            # # o1_permute, o2_permute, v_permute0, v_permute1 = transformer(f2, f2_permute, p2, p2)
+            # o1_permute, o2_permute, atts_permute= transformer(f1, f2_permute, p1, p2)   # , v_permute0, v_permute1 
+
+            # try:
+            #     o2_permute_late = o2[:, trace_idx_rot1]
+            # except Exception as e:
+            #     print('block', block)
+            #     print('align_mode', align_mode)
+            #     print('alternative_impl', alternative_impl)
+            #     raise ValueError(e)
+
+            # for anchor_i in range(na):
+            # max_err = torch.max((o2_permute - o2_permute_late).abs())
+            # print("max err:", max_err)
+            # if max_err > 1e-4:
+            #     print('block', block)
+            #     print('align_mode', align_mode)
+            #     print('alternative_impl', alternative_impl)
+            #     break_sig = True
+            # ##################################
+
+            o2_permute = o2[:, trace_idx_rot1]
+            sim = (o2_rot*o2_permute).sum(-1)/(torch.norm(o2_rot, dim=-1)*torch.norm(o2_permute, dim=-1))
+            print('block', block)
+            print('align_mode', align_mode)
+            print('alternative_impl', alternative_impl)
+            print(f'aligned=\n{sim}')
+            sim = (o2_rot*o2).sum(-1)/(torch.norm(o2_rot, dim=-1)*torch.norm(o2, dim=-1))
+            print(f'not aligned=\n{sim}')
+            sim = (o1_rot*o1).sum(-1)/(torch.norm(o1_rot, dim=-1)*torch.norm(o1, dim=-1))
+            print(f'o1 should be unchanged=\n{sim}')
