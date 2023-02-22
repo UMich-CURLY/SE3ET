@@ -38,7 +38,7 @@ _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 5000 #10000 # random select if number of points is larger than point_limit
+_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
@@ -47,7 +47,7 @@ _C.train.augmentation_rotation = 1.0
 _C.test = edict()
 _C.test.batch_size = 1
 _C.test.num_workers = 8
-_C.test.point_limit = 10000 #None # 10000
+_C.test.point_limit = None
 
 # evaluation
 _C.eval = edict()
@@ -84,8 +84,8 @@ _C.backbone.init_radius = _C.backbone.base_radius * _C.backbone.init_voxel_size
 _C.backbone.init_sigma = _C.backbone.base_sigma * _C.backbone.init_voxel_size
 _C.backbone.group_norm = 32
 _C.backbone.input_dim = 1
-_C.backbone.init_dim = 16
-_C.backbone.output_dim = 32
+_C.backbone.init_dim = 64
+_C.backbone.output_dim = 1024
 
 
 # epn
@@ -152,14 +152,11 @@ _C.coarse_matching.dual_normalization = True
 
 # model - GeoTransformer
 _C.geotransformer = edict()
-_C.geotransformer.input_dim = 32 #8 #256 #1024
-_C.geotransformer.hidden_dim = 32 #8 #256
-_C.geotransformer.output_dim = 32 #8 #256
+_C.geotransformer.input_dim = 1024
+_C.geotransformer.hidden_dim = 256
+_C.geotransformer.output_dim = 256
 _C.geotransformer.num_heads = 4
-# _C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
-_C.geotransformer.blocks = ['self_eq', 'cross_a_best', 'self_eq', 'cross_r_best', 'self', 'cross']
-# _C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross']
- #['cross_r_soft', 'self_eq', 'cross_eq', 'cross_a_soft', 'cross_a_best', 'cross_r_best']
+_C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3

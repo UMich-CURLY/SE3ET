@@ -15,12 +15,11 @@ from geotransformer.modules.geotransformer import (
 
 from backbone import E2PNBackbone
 
-from pytorch_memlab import LineProfiler, MemReporter
+from geotransformer.modules.transformer import SinusoidalPositionalEmbedding, RPEConditionalTransformer
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
         super(GeoTransformer, self).__init__()
-
         self.num_points_in_patch = cfg.model.num_points_in_patch
         self.matching_radius = cfg.model.ground_truth_matching_radius
 
@@ -40,12 +39,7 @@ class GeoTransformer(nn.Module):
             cfg.geotransformer.sigma_d,
             cfg.geotransformer.sigma_a,
             cfg.geotransformer.angle_k,
-            reduction_a=cfg.geotransformer.reduction_a,
-            kanchor=cfg.epn.kanchor,
-            quotient_factor=cfg.epn.quotient_factor,
-            align_mode='0',
-            alternative_impl=False,
-            attn_r_summ='mean',
+            reduction_a=cfg.geotransformer.reduction_a
         )
 
         self.coarse_target = SuperPointTargetGenerator(
@@ -70,16 +64,9 @@ class GeoTransformer(nn.Module):
 
         self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
 
-
-        with LineProfiler(self.backbone, self.transformer) as prof:
-            outer()
-        prof.display()
-        reporter = MemReporter()
-        reporter.report()
-
     def forward(self, data_dict):
         output_dict = {}
-        
+
         # 0. Separate input point clouds to reference and source
         ref_length = data_dict['lengths'][0][0].item()
         points = data_dict['points'][0].detach()
@@ -133,12 +120,12 @@ class GeoTransformer(nn.Module):
         ref_feats_c, src_feats_c = self.transformer(
             ref_points_c.unsqueeze(0),
             src_points_c.unsqueeze(0),
-            ref_feats_c.unsqueeze(0),
-            src_feats_c.unsqueeze(0),
+            ref_feat_inv_c.unsqueeze(0),
+            src_feat_inv_c.unsqueeze(0),
         )
 
-        ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
-        src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
+        ref_feats_c_norm = F.normalize(ref_feat_inv_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
+        src_feats_c_norm = F.normalize(src_feat_inv_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
 
         output_dict['ref_feats_c'] = ref_feats_c_norm
         output_dict['src_feats_c'] = src_feats_c_norm

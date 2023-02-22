@@ -21,11 +21,8 @@ class E2PNBackbone(nn.Module):
         #          2, 1, 1, \
         #          2, 1, 1]
 
-        # mlps=[[init_dim], [init_dim*2], [init_dim*4]] # 16, 32, 64
-        # strides=[2, 4, 4]
-
-        mlps=[[init_dim], [init_dim], [init_dim]]
-        strides=[2, 2, 2]
+        mlps=[[init_dim], [init_dim*2], [init_dim*4], [init_dim*8]]
+        strides=[1, 2, 2, 2]
 
         out_mlps=[mlps[-1][0], output_dim]
         initial_radius_ratio = 0.2

@@ -53,10 +53,11 @@ class ThreeDMatchOnePairDataset(torch.utils.data.Dataset):
             self.metadata_list = pickle.load(f)
             if self.overlap_threshold is not None:
                 self.metadata_list = [x for x in self.metadata_list if x['overlap'] > self.overlap_threshold]
-            if subset == 'train':
-                self.metadata_list =  self.metadata_list[:1]
-            elif subset == 'val':
-                self.metadata_list =  self.metadata_list[:1]
+            # if subset == 'train':
+            #     self.metadata_list =  self.metadata_list[:1]
+            # elif subset == 'val':
+            #     self.metadata_list =  self.metadata_list[:1]
+            self.metadata_list =  self.metadata_list[:1]
 
     def __len__(self):
         return len(self.metadata_list)

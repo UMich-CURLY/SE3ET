@@ -15,6 +15,8 @@ from geotransformer.modules.geotransformer import (
 
 from backbone import E2PNBackbone
 
+from geotransformer.modules.transformer import SinusoidalPositionalEmbedding, RPEConditionalTransformer
+
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
         super(GeoTransformer, self).__init__()
@@ -37,7 +39,7 @@ class GeoTransformer(nn.Module):
             cfg.geotransformer.sigma_d,
             cfg.geotransformer.sigma_a,
             cfg.geotransformer.angle_k,
-            reduction_a=cfg.geotransformer.reduction_a,
+            reduction_a=cfg.geotransformer.reduction_a
         )
 
         self.coarse_target = SuperPointTargetGenerator(
@@ -65,23 +67,15 @@ class GeoTransformer(nn.Module):
     def forward(self, data_dict):
         output_dict = {}
 
-        # Downsample point clouds
-        feats = data_dict['features'].detach()
-        transform = data_dict['transform'].detach()
-
-        ref_length_c = data_dict['lengths'][-1][0].item()
-        ref_length_f = data_dict['lengths'][1][0].item()
+        # 0. Separate input point clouds to reference and source
         ref_length = data_dict['lengths'][0][0].item()
-        points_c = data_dict['points'][-1].detach()
-        points_f = data_dict['points'][1].detach()
         points = data_dict['points'][0].detach()
-
-        ref_points_c = points_c[:ref_length_c]
-        src_points_c = points_c[ref_length_c:]
-        ref_points_f = points_f[:ref_length_f]
-        src_points_f = points_f[ref_length_f:]
         ref_points = points[:ref_length]
         src_points = points[ref_length:]
+
+        # 1. Obtain equivariant features and subsampled points 
+        ref_feats_c, ref_feats_f, ref_points_c, ref_points_f, ref_feat_inv_c = self.backbone(ref_points)
+        src_feats_c, src_feats_f, src_points_c, src_points_f, src_feat_inv_c = self.backbone(src_points)
 
         output_dict['ref_points_c'] = ref_points_c
         output_dict['src_points_c'] = src_points_c
@@ -90,7 +84,9 @@ class GeoTransformer(nn.Module):
         output_dict['ref_points'] = ref_points
         output_dict['src_points'] = src_points
 
-        # 1. Generate ground truth node correspondences
+        feats_f = torch.cat([ref_feats_f, src_feats_f], dim=0)
+
+        # 2. Generate ground truth node correspondences
         _, ref_node_masks, ref_node_knn_indices, ref_node_knn_masks = point_to_node_partition(
             ref_points_f, ref_points_c, self.num_points_in_patch
         )
@@ -103,6 +99,7 @@ class GeoTransformer(nn.Module):
         ref_node_knn_points = index_select(ref_padded_points_f, ref_node_knn_indices, dim=0)
         src_node_knn_points = index_select(src_padded_points_f, src_node_knn_indices, dim=0)
 
+        transform = data_dict['transform'].detach()
         gt_node_corr_indices, gt_node_corr_overlaps = get_node_correspondences(
             ref_points_c,
             src_points_c,
@@ -119,30 +116,21 @@ class GeoTransformer(nn.Module):
         output_dict['gt_node_corr_indices'] = gt_node_corr_indices
         output_dict['gt_node_corr_overlaps'] = gt_node_corr_overlaps
 
-        # 2. KPFCNN Encoder
-        feats_list = self.backbone(feats, data_dict)
-
-        feats_c = feats_list[-1]
-        feats_f = feats_list[0]
-
         # 3. Conditional Transformer
-        ref_feats_c = feats_c[:ref_length_c]
-        src_feats_c = feats_c[ref_length_c:]
         ref_feats_c, src_feats_c = self.transformer(
             ref_points_c.unsqueeze(0),
             src_points_c.unsqueeze(0),
-            ref_feats_c.unsqueeze(0),
-            src_feats_c.unsqueeze(0),
+            ref_feat_inv_c.unsqueeze(0),
+            src_feat_inv_c.unsqueeze(0),
         )
-        ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1)
-        src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1)
+
+        ref_feats_c_norm = F.normalize(ref_feat_inv_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
+        src_feats_c_norm = F.normalize(src_feat_inv_c.squeeze(0), p=2, dim=1) # dim=1 is number of points
 
         output_dict['ref_feats_c'] = ref_feats_c_norm
         output_dict['src_feats_c'] = src_feats_c_norm
 
         # 5. Head for fine level matching
-        ref_feats_f = feats_f[:ref_length_f]
-        src_feats_f = feats_f[ref_length_f:]
         output_dict['ref_feats_f'] = ref_feats_f
         output_dict['src_feats_f'] = src_feats_f
 
@@ -169,6 +157,7 @@ class GeoTransformer(nn.Module):
         ref_node_corr_knn_points = ref_node_knn_points[ref_node_corr_indices]  # (P, K, 3)
         src_node_corr_knn_points = src_node_knn_points[src_node_corr_indices]  # (P, K, 3)
 
+        # TODO: process fine features
         ref_padded_feats_f = torch.cat([ref_feats_f, torch.zeros_like(ref_feats_f[:1])], dim=0)
         src_padded_feats_f = torch.cat([src_feats_f, torch.zeros_like(src_feats_f[:1])], dim=0)
         ref_node_corr_knn_feats = index_select(ref_padded_feats_f, ref_node_corr_knn_indices, dim=0)  # (P, K, C)

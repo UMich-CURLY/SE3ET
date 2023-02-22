@@ -12,20 +12,15 @@ class E2PNBackbone(nn.Module):
         super(E2PNBackbone, self).__init__()
 
         # original GeoTransformer backbone strucutre, run out of memory using E2PN
-        # mlps=[[init_dim], [init_dim*2], \
-        #       [init_dim*2], [init_dim*4], [init_dim*4], \
-        #       [init_dim*4], [init_dim*8], [init_dim*8], \
-        #       [init_dim*8], [init_dim*16], [init_dim*16]]
-        # strides=[1, 1, \
-        #          2, 1, 1, \
-        #          2, 1, 1, \
-        #          2, 1, 1]
-
-        # mlps=[[init_dim], [init_dim*2], [init_dim*4]] # 16, 32, 64
-        # strides=[2, 4, 4]
-
-        mlps=[[init_dim], [init_dim*2], [init_dim*2]]
-        strides=[2, 2, 2]
+        mlps=[[init_dim], [init_dim*2], \
+              [init_dim*2], [init_dim*4], [init_dim*4], \
+              [init_dim*4], [init_dim*8], [init_dim*8], \
+              [init_dim*8], [init_dim*16], [init_dim*16]]
+        strides=[1, 1, \
+                 2, 1, 1, \
+                 2, 1, 1, \
+                 2, 1, 1]
+        self.firststride = next(x for x, val in enumerate(strides) if val > 1)
 
         out_mlps=[mlps[-1][0], output_dim]
         initial_radius_ratio = 0.2
@@ -35,6 +30,8 @@ class E2PNBackbone(nn.Module):
         kernel_multiplier = 2
         sigma_ratio= 0.5
         xyz_pooling = None
+
+        
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         input_num = config_epn.num_points
@@ -75,8 +72,8 @@ class E2PNBackbone(nn.Module):
             weighted_sigma.append(weighted_sigma[idx] * s)
 
         params['equi2inv'] = {
-            'dim_in': mlps[0][0],
-            'mlp': [mlps[0][0], output_dim],
+            'dim_in': mlps[self.firststride][0],
+            'mlp': [mlps[self.firststride][0], output_dim],
             'pooling': so3_pooling,
             'temperature': temperature,
             'kanchor': na,
@@ -173,10 +170,9 @@ class E2PNBackbone(nn.Module):
         x = x.unsqueeze(0)
         # nb, np, 3 -> [nb, 3, np] x [nb, 1, np, na]
         x = preprocess_input(x, self.na_in, False)
-
         for block_i, block in enumerate(self.backbone):
             x = block(x)
-            if block_i == 0:
+            if block_i == self.firststride:
                 x_f = self.equi2inv(x)
                 points_f = x.xyz.clone().detach().transpose(-1, -2).squeeze(0) # fine points are the points after the first striding
                 feat_f = x_f.clone().detach().squeeze(0)

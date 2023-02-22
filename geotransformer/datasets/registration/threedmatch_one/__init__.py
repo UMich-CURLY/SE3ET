@@ -3,6 +3,6 @@ from geotransformer.datasets.registration.threedmatch_one.dataset import ThreeDM
 
 
 __all__ = [
-    'ThreeDMatchPairSmallDataset',
+    'ThreeDMatchOnePairDataset',
     # 'ThreeDMatchPairMinkowskiDataset',
 ]
