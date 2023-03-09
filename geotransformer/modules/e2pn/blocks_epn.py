@@ -549,7 +549,6 @@ class BatchNormBlockEPN(nn.Module):
             # self.batch_norm = nn.InstanceNorm2d(in_dim, momentum=bn_momentum, affine=False)
         else:
             self.bias = Parameter(torch.zeros(in_dim, dtype=torch.float32), requires_grad=True)
-        return
 
     def reset_parameters(self):
         nn.init.zeros_(self.bias)

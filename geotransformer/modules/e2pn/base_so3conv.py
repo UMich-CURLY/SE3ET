@@ -7,6 +7,7 @@ import scipy.io as sio
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 from torch.nn.modules.batchnorm import _BatchNorm
 
 # Local E2PN package
@@ -189,6 +190,8 @@ class BasicSO3ConvBlock(nn.Module):
                 conv = S2ConvBlock(**param['args'])
             elif param['type'] == 'separable_s2_block':
                 conv = SeparableS2ConvBlock(param['args'])
+            elif param['type'] == 'separable_s2_residualblock':
+                conv = SeparableS2ConvResidualBlock(param['args'])
             else:
                 raise ValueError(f'No such type of SO3Conv {param["type"]}')
             self.layer_types.append(param['type'])
@@ -196,10 +199,10 @@ class BasicSO3ConvBlock(nn.Module):
         self.params = params
 
     def forward(self, x):
-        inter_idx, inter_w = None, None
+        inter_idx, inter_w, sample_idx = None, None, None
         for conv, param in zip(self.blocks, self.params):
-            if param['type'] in ['inter', 'inter_block', 'separable_block', 's2_block', 'separable_s2_block']:
-                inter_idx, inter_w, _, x = conv(x, inter_idx, inter_w)
+            if param['type'] in ['inter', 'inter_block', 'separable_block', 's2_block', 'separable_s2_block', 'separable_s2_residualblock']:
+                inter_idx, inter_w, sample_idx, x = conv(x, inter_idx, inter_w)
                 # import ipdb; ipdb.set_trace()
 
                 if param['args']['stride'] > 1:
@@ -210,7 +213,7 @@ class BasicSO3ConvBlock(nn.Module):
             else:
                 raise ValueError(f'No such type of SO3Conv {param["type"]}')
 
-        return x
+        return x, sample_idx
 
     def get_anchor(self):
         if self.params[-1]['args']['kanchor'] == 12:
@@ -253,6 +256,132 @@ class SeparableS2ConvBlock(nn.Module):
         # skip_feature = self.relu(skip_feature)
         x_out = zptk.SphericalPointCloud(x.xyz, x.feats + skip_feature, x.anchors)
         return inter_idx, inter_w, sample_idx, x_out
+
+
+class SeparableS2ConvResidualBlock(nn.Module):
+    def __init__(self, params) -> None:
+        """S2Conv and skip (1x1 conv) connection"""
+        super().__init__()     
+        self.bn_momentum = params['batch_norm_momentum']
+        self.use_bn = params['use_batch_norm']
+        self.in_dim = params['dim_in']
+        self.out_dim = params['dim_out']
+        self.stride = params['stride']
+        self.relu_end = True
+        norm = getattr(nn,params['norm']) if 'norm' in params.keys() else None
+
+        mid_dim = self.out_dim // 4
+
+        # First downscaling mlp
+        if self.in_dim != mid_dim:
+            self.unary1 = UnaryBlock(self.in_dim, mid_dim, self.use_bn, self.bn_momentum)
+        else:
+            self.unary1 = nn.Identity()
+        
+        self.s2_conv = S2ConvBlock(mid_dim, mid_dim, params['kernel_size'], params['stride'],
+                                   params['radius'], params['sigma'], params['n_neighbor'], 
+                                   params['multiplier'], kanchor=params['kanchor'], lazy_sample=params['lazy_sample'],
+                                   norm=norm, activation=params['activation'], pooling=params['pooling'], dropout_rate=params['dropout_rate'])
+
+        self.norm = nn.InstanceNorm2d(mid_dim, affine=False) if norm is None else norm(self.mid_dim)
+
+        # Second upscaling mlp
+        self.unary2 = UnaryBlock(mid_dim, self.out_dim, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        
+        # Shortcut optional mpl
+        if self.in_dim != self.out_dim:
+            self.skip_conv = UnaryBlock(self.in_dim, self.out_dim, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        else:
+            self.skip_conv = nn.Identity()
+
+        self.relu = getattr(F, params['activation'])
+
+    def forward(self, x, inter_idx, inter_w):
+        # x is a zptk.SphericalPointCloud with x.feat [nb, 1, np, na]
+        skip_feature = x.feats
+        x_feat = self.unary1(x.feats)
+        x = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
+        inter_idx, inter_w, sample_idx, x = self.s2_conv(x, inter_idx, inter_w)        
+        x_feat = self.unary2(x.feats)
+
+        if self.stride > 1:
+            skip_feature = zptk.functional.batched_index_select(skip_feature, 2, sample_idx.long())
+
+        skip_feature = self.skip_conv(skip_feature)
+        skip_feature = self.relu(self.norm(skip_feature))
+        
+        x_out = zptk.SphericalPointCloud(x.xyz, x_feat + skip_feature, x.anchors)
+        return inter_idx, inter_w, sample_idx, x_out
+
+class UnaryBlock(nn.Module):
+    
+    def __init__(self, in_dim, out_dim, use_bn, bn_momentum, no_relu=False):
+        """
+        Initialize a standard unary block with its ReLU and BatchNorm.
+        :param in_dim: dimension input features
+        :param out_dim: dimension input features
+        :param use_bn: boolean indicating if we use Batch Norm
+        :param bn_momentum: Batch norm momentum
+        """
+
+        super(UnaryBlock, self).__init__()
+        self.bn_momentum = bn_momentum
+        self.use_bn = use_bn
+        self.no_relu = no_relu
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.mlp = nn.Linear(in_dim, out_dim) #, bias=False)
+        
+        self.batch_norm = BatchNormBlock(out_dim, self.use_bn, self.bn_momentum)
+        self.leaky_relu = nn.LeakyReLU(0.1)
+
+    def forward(self, x, batch=None):
+        # x = [nb, in_dim, np, na]
+        x = x.permute(0, 2, 3, 1) # [nb, np, na, in_dim]
+        x = self.mlp(x) # [nb, np, na, out_dim]
+        x = self.batch_norm(x)
+        if not self.no_relu:
+            x = self.leaky_relu(x)
+        x = x.permute(0, 3, 1, 2) # [nb, out_dim, np, na]
+        return x
+
+class BatchNormBlock(nn.Module):
+
+    def __init__(self, in_dim, use_bn, bn_momentum):
+        """
+        Initialize a batch normalization block. If network does not use batch normalization, replace with biases.
+        :param in_dim: dimension input features
+        :param use_bn: boolean indicating if we use Batch Norm
+        :param bn_momentum: Batch norm momentum
+        """
+        super(BatchNormBlock, self).__init__()
+        self.bn_momentum = bn_momentum
+        self.use_bn = use_bn
+        self.in_dim = in_dim
+        if self.use_bn:
+            self.batch_norm = nn.BatchNorm2d(in_dim, momentum=bn_momentum)
+            # self.batch_norm = nn.InstanceNorm2d(in_dim, momentum=bn_momentum, affine=False)
+        else:
+            self.bias = Parameter(torch.zeros(in_dim, dtype=torch.float32), requires_grad=True)
+
+    def reset_parameters(self):
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x):
+        # x = [nb, np, na, in_dim]
+        if self.use_bn:
+            x = x.permute(0, 3, 1, 2) # [nb, in_dim, np, na]
+            x = self.batch_norm(x)
+            x = x.permute(0, 2, 3, 1) # [nb, np, na, in_dim]
+            return x
+        else:
+            return x + self.bias
+
+    def __repr__(self):
+        return 'BatchNormBlockEPN(in_feat: {:d}, momentum: {:.3f}, only_bias: {:s})'.format(self.in_dim,
+                                                                                         self.bn_momentum,
+                                                                                         str(not self.use_bn))
+
 
 class SeparableSO3ConvBlock(nn.Module):
     def __init__(self, params):
@@ -1048,5 +1177,22 @@ class FinalLinear(nn.Module):
         feat = feat.squeeze(-1).permute(0, 2, 1)
 
         x_out = self.head_mlp(feat) # bs, N, c_out
+
+        return x_out
+    
+class InvariantPooling(nn.Module):
+    def __init__(self, norm=None):
+        super(InvariantPooling, self).__init__()
+
+    def forward(self, x):
+        # x.feats = (bs, c_in, np, na)
+        if x.feats.shape[-1] > 1:
+            # feat = torch.sum(x.feats, -1, keepdim=True)
+            # feat, _ = torch.max(x.feats, -1, keepdim=True)
+            feat = torch.amax(x.feats, -1, keepdim=True)
+            # feat = torch.mean(x.feats, -1, keepdim=True
+        else:
+            feat = x.feats
+        x_out = feat.squeeze(-1).permute(0, 2, 1)
 
         return x_out

@@ -38,7 +38,7 @@ _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 4096 # random select if number of points is larger than point_limit
+_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
@@ -47,7 +47,7 @@ _C.train.augmentation_rotation = 1.0
 _C.test = edict()
 _C.test.batch_size = 1
 _C.test.num_workers = 8
-_C.test.point_limit = 4096
+_C.test.point_limit = 10000
 
 # evaluation
 _C.eval = edict()
@@ -66,7 +66,7 @@ _C.ransac.num_iterations = 1000
 
 # optim
 _C.optim = edict()
-_C.optim.lr = 1e-4
+_C.optim.lr = 1e-3
 _C.optim.lr_decay = 0.95
 _C.optim.lr_decay_steps = 1
 _C.optim.weight_decay = 1e-6
@@ -95,23 +95,27 @@ _C.epn = edict()
 # _C.epn.kanchor = 3 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 15 # Number of kernel points
+# _C.epn.non_sep_conv = True # ?????? full (non-separable) conv; True: E2PN, False: EPN ??????
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 12, quotient_factor  = 5, k = 13
 # _C.epn.kanchor = 12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 5 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 13 # Number of kernel points
+# _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
 # _C.num_points = 4096
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 4, quotient_factor  = 3, k = 15
 _C.epn.kanchor = 4 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 _C.epn.quotient_factor = 3 # > 1 enables quotient features. 2 results in C6/C2. 
 _C.epn.num_kernel_points = 15 # Number of kernel points
+_C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
 # _C.num_points = 4096
 # ======== EPN ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
 # _C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 13 # Number of kernel points
+# _C.epn.non_sep_conv = False # full (non-separable) conv; True: E2PN, False: EPN
 # _C.num_points = 2048
 # ========
 _C.epn.num_points = _C.train.point_limit
@@ -121,7 +125,6 @@ _C.epn.att_permute = False # early fusion with soft permutation
 _C.epn.dual_feature = False # use both permutation and max pooling as the invariant layer
 _C.epn.ctrness_w_track = False # use the max pooling feature to regress centerness noise free kernel
 _C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
-_C.epn.non_sep_conv = False # full (non-separable) conv; True: E2PN, False: EPN
 _C.epn.rot_by_permute = False # rotate-by-permute in full conv
 _C.epn.rot_head_attn = False # late fusion with attention weight. Need to remove 'inv_epn' to enable late fusion. 
 _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features

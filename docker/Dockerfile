@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:21.12-py3
+FROM nvcr.io/nvidia/pytorch:22.12-py3
 
 
 LABEL version="0.5"
@@ -19,8 +19,9 @@ RUN pip install ninja
 # build essential, cmake, vim, git
 RUN apt-get update && apt-get -y install cmake
 RUN apt-get update && apt-get install -y vim
-RUN apt-get install -y build-essential
+RUN apt-get update && apt-get install -y build-essential
 RUN apt-get update && apt-get install -y git-all
+RUN apt-get update && apt-get install -y python3-tk
 
 # for epn
 RUN pip install numpy
