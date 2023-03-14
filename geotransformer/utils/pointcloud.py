@@ -15,7 +15,7 @@ def get_nearest_neighbor(
 ):
     r"""Compute the nearest neighbor for the query points in support points."""
     s_tree = cKDTree(s_points)
-    distances, indices = s_tree.query(q_points, k=1, n_jobs=-1)
+    distances, indices = s_tree.query(q_points, k=1, workers=-1)
     if return_index:
         return distances, indices
     else:
