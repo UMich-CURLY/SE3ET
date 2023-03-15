@@ -172,6 +172,76 @@ class InterSO3ConvBlock(nn.Module):
             feat = self.dropout(feat)
         return inter_idx, inter_w, sample_idx, zptk.SphericalPointCloud(x.xyz, feat, x.anchors)
 
+# [b, c1, p1, a] -> [b, c1, k, p2, a] -> [b, c2, p2, a]
+class InterSO3ConvResidualBlock(nn.Module):
+    def __init__(self, dim_in, dim_out, kernel_size, stride,
+                 radius, sigma, n_neighbor, multiplier, kanchor=60,
+                 lazy_sample=None, norm=None, activation='relu', pooling='none', dropout_rate=0):
+        super(InterSO3ConvResidualBlock, self).__init__()
+        # hard coded parameters for unary blocks
+        self.use_bn = True
+        self.bn_momentum = 0.99
+        self.relu_end = True
+        self.stride = stride
+
+        if lazy_sample is None:
+            lazy_sample = True
+
+        if norm is not None:
+            norm = getattr(nn,norm)
+
+        dim_mid = dim_out // 4
+
+        # First downscaling mlp
+        if dim_in != dim_mid:
+            self.unary1 = UnaryBlock(dim_in, dim_mid, self.use_bn, self.bn_momentum)
+        else:
+            self.unary1 = nn.Identity()
+
+        pooling_method = None if pooling == 'none' else pooling
+        self.conv = sptk.InterSO3Conv(dim_mid, dim_mid, kernel_size, stride,
+                                      radius, sigma, n_neighbor, kanchor=kanchor,
+                                      lazy_sample=lazy_sample, pooling=pooling_method)
+        
+        self.norm = nn.InstanceNorm2d(dim_out, affine=False) if norm is None else norm(dim_out)
+
+        # Second upscaling mlp
+        self.unary2 = UnaryBlock(dim_mid, dim_out, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        
+        # Shortcut optional mpl
+        if dim_in != dim_out:
+            self.skip_conv = UnaryBlock(dim_in, dim_out, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        else:
+            self.skip_conv = nn.Identity()
+
+        if activation is None:
+            self.relu = None
+        else:
+            self.relu = getattr(F, activation)
+
+        self.relu = getattr(F, activation)
+
+    def forward(self, x, inter_idx=None, inter_w=None):    
+        # x is a zptk.SphericalPointCloud with x.feat [nb, 1, np, na]
+        skip_feature = x.feats
+        x_feat = self.unary1(x.feats)
+        x = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
+        inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w)  
+        x_feat = self.norm(x.feats)
+        if self.relu is not None:
+            x_feat = self.relu(x_feat)
+        x_feat = self.relu(x_feat)      
+        x_feat = self.unary2(x_feat)
+
+        if self.stride > 1:
+            skip_feature = zptk.functional.batched_index_select(skip_feature, 2, sample_idx.long())
+
+        skip_feature = self.skip_conv(skip_feature)
+        x_feat = self.relu(x_feat + skip_feature)
+        
+        x_out = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
+        return inter_idx, inter_w, sample_idx, x_out
+
 
 class BasicSO3ConvBlock(nn.Module):
     def __init__(self, params):
@@ -184,6 +254,8 @@ class BasicSO3ConvBlock(nn.Module):
                 conv = IntraSO3ConvBlock(**param['args'])
             elif param['type'] == 'inter_block':
                 conv = InterSO3ConvBlock(**param['args'])
+            elif param['type'] == 'inter_residualblock':
+                conv = InterSO3ConvResidualBlock(**param['args'])
             elif param['type'] == 'separable_block':
                 conv = SeparableSO3ConvBlock(param['args'])
             elif param['type'] == 's2_block':
@@ -201,7 +273,7 @@ class BasicSO3ConvBlock(nn.Module):
     def forward(self, x):
         inter_idx, inter_w, sample_idx = None, None, None
         for conv, param in zip(self.blocks, self.params):
-            if param['type'] in ['inter', 'inter_block', 'separable_block', 's2_block', 'separable_s2_block', 'separable_s2_residualblock']:
+            if param['type'] in ['inter', 'inter_block', 'inter_residualblock', 'separable_block', 's2_block', 'separable_s2_block', 'separable_s2_residualblock']:
                 inter_idx, inter_w, sample_idx, x = conv(x, inter_idx, inter_w)
                 # import ipdb; ipdb.set_trace()
 
@@ -301,16 +373,18 @@ class SeparableS2ConvResidualBlock(nn.Module):
         skip_feature = x.feats
         x_feat = self.unary1(x.feats)
         x = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
-        inter_idx, inter_w, sample_idx, x = self.s2_conv(x, inter_idx, inter_w)        
-        x_feat = self.unary2(x.feats)
+        inter_idx, inter_w, sample_idx, x = self.s2_conv(x, inter_idx, inter_w) 
+        x_feat = self.norm(x.feats)
+        x_feat = self.relu(x_feat)
+        x_feat = self.unary2(x_feat)
 
         if self.stride > 1:
             skip_feature = zptk.functional.batched_index_select(skip_feature, 2, sample_idx.long())
 
         skip_feature = self.skip_conv(skip_feature)
-        skip_feature = self.relu(self.norm(skip_feature))
+        x_feat = self.relu(x_feat + skip_feature)
         
-        x_out = zptk.SphericalPointCloud(x.xyz, x_feat + skip_feature, x.anchors)
+        x_out = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
         return inter_idx, inter_w, sample_idx, x_out
 
 class UnaryBlock(nn.Module):
