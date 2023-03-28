@@ -262,8 +262,8 @@ class KPConvInterSO3(nn.Module):
             # self.register_buffer('ridx_rot', ridx_rot)   # c, a
             pass
 
-        assert torch.max((rres_ori - 1).abs()) < 1e-3, f"{torch.min(rres_ori)}, \n{self.anchors}"
-        assert torch.max((rres_rot - 1).abs()) < 1e-3, f"{torch.min(rres_rot)}, \n{self.anchors}"
+        assert torch.max((rres_ori - 1).abs()) < 1e-3, f"{torch.max(rres_ori)}, \n{self.anchors}"
+        assert torch.max((rres_rot - 1).abs()) < 1e-3, f"{torch.max(rres_rot)}, \n{self.anchors}"
         return
 
     def feat_gather_by_perm(self, neighbors, neighb_inds, x):
@@ -619,10 +619,10 @@ class LastUnaryBlockEPN(nn.Module):
 
 
 class KPConvInterSO3Block(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
         super().__init__()
 
-        current_extent = radius * config.KP_extent / config.conv_radius
+        # current_extent = radius * config.KP_extent / config.conv_radius
 
         # Get other parameters
         self.bn_momentum = config.batch_norm_momentum
@@ -635,7 +635,7 @@ class KPConvInterSO3Block(nn.Module):
                                              config.kanchor,
                                              in_dim,
                                              out_dim,
-                                             current_extent, 
+                                             sigma, 
                                              radius,
                                              config.KP_influence,
                                              config.aggregation_mode,
@@ -678,7 +678,7 @@ class KPConvIntraSO3Block(nn.Module):
 
 
 class SimpleBlockEPN(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
         super().__init__()
         
         self.bn_momentum = config.batch_norm_momentum
@@ -688,7 +688,7 @@ class SimpleBlockEPN(nn.Module):
         self.out_dim = out_dim
         self.non_sep_conv = config.non_sep_conv
 
-        self.interso3 = KPConvInterSO3Block(block_name, self.in_dim, self.out_dim, radius, config)
+        self.interso3 = KPConvInterSO3Block(block_name, self.in_dim, self.out_dim, radius, sigma, config)
         if not self.non_sep_conv:
             self.intraso3 = KPConvIntraSO3Block(block_name, self.out_dim, self.out_dim, config)
 
@@ -699,7 +699,7 @@ class SimpleBlockEPN(nn.Module):
         return x
 
 class ResnetBottleneckBlockEPN(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
         super().__init__()
         
         self.bn_momentum = config.batch_norm_momentum
@@ -717,10 +717,12 @@ class ResnetBottleneckBlockEPN(nn.Module):
         else:
             self.unary1 = nn.Identity()
 
-        self.interso3 = KPConvInterSO3Block(block_name, out_dim // 4, out_dim // 4, radius, config)
+        self.interso3 = KPConvInterSO3Block(block_name, out_dim // 4, out_dim // 4, radius, sigma, config)
         if not self.non_sep_conv:
             self.intraso3 = KPConvIntraSO3Block(block_name, out_dim // 4, out_dim // 4, config)
 
+        self.norm = nn.InstanceNorm2d(out_dim // 4, affine=False)
+        
         # Second upscaling mlp
         self.unary2 = UnaryBlockEPN(out_dim // 4, out_dim, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
         
@@ -738,6 +740,9 @@ class ResnetBottleneckBlockEPN(nn.Module):
         x = self.interso3(x, q_pts, s_pts, neighb_inds)
         if not self.non_sep_conv:
             x = self.intraso3(x)
+
+        x = self.norm(x)
+        x = self.leaky_relu(x)
         x = self.unary2(x)
 
         if 'strided' in self.block_name:
@@ -835,4 +840,3 @@ class LiftBlockEPN(nn.Module):
         np, nc = x.shape                # p,a,c
         x = x.unsqueeze(1).expand(-1, self.kanchor, -1)
         return x
-

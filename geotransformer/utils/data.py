@@ -193,8 +193,11 @@ def calibrate_neighbors_stack_mode(
     dataset, collate_fn, num_stages, voxel_size, search_radius, keep_ratio=0.8, sample_threshold=2000
 ):
     # Compute higher bound of neighbors number in a neighborhood
-    hist_n = int(np.ceil(4 / 3 * np.pi * (search_radius / voxel_size + 1) ** 3))
+    # calculate number of voxels in this search radius volumn
+    hist_n = int(np.ceil(4 / 3 * np.pi * (search_radius / voxel_size + 1) ** 3)) 
+    # create an empty histogram
     neighbor_hists = np.zeros((num_stages, hist_n), dtype=np.int32)
+    # set the highest number of neighbor we want to find for each layer as hist_n
     max_neighbor_limits = [hist_n] * num_stages
 
     # Get histogram of neighborhood sizes i in 1 epoch max.
@@ -204,14 +207,26 @@ def calibrate_neighbors_stack_mode(
         )
 
         # update histogram
+        # calculate number of neighbors per point (N, 1) for each stage 
+        # neighbors < N is used because radius search would filled with N if there are less than max_neighbor_limits
         counts = [np.sum(neighbors.numpy() < neighbors.shape[0], axis=1) for neighbors in data_dict['neighbors']]
+        # create neighbot histogram (hist_n, 1) for each stage
+        # element in index i represents number of points that has i neighbors
         hists = [np.bincount(c, minlength=hist_n)[:hist_n] for c in counts]
+        # stack neighbor histograms for each stage together, (num_stages, hist_n)
+        # keep adding the statistics from different point clouds
         neighbor_hists += np.vstack(hists)
 
+        # stop calculating when we have enough samples for all the stages
         if np.min(np.sum(neighbor_hists, axis=1)) > sample_threshold:
             break
-
+    
+    # calculate accumulated distribution for each stage, (hist_n, num_stages)
+    # element in index (i, n) means the number of point has number of neighbors smaller or equal to i in stage n
     cum_sum = np.cumsum(neighbor_hists.T, axis=0)
+    # find the limit for number of neighbors using keep ratio times the total number of points in the statistics
+    # for example, if we have 5k points in the histogram and the keep ratio is 0.8,
+    # then 4k points has number of neighbors smaller than neighbor_limits 
     neighbor_limits = np.sum(cum_sum < (keep_ratio * cum_sum[hist_n - 1, :]), axis=0)
 
     return neighbor_limits
