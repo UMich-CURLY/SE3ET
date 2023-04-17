@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from torch.nn.modules.batchnorm import _BatchNorm
+from geotransformer.modules.kpconv.functional import maxpool
 
 # Local E2PN package
 import sys
@@ -160,9 +161,9 @@ class InterSO3ConvBlock(nn.Module):
 
         self.dropout = nn.Dropout(dropout_rate) if dropout_rate > 0 else None
 
-    def forward(self, x, inter_idx=None, inter_w=None):
+    def forward(self, x, inter_idx=None, inter_w=None, q_point=None, neighbor_indices=None):
         input_x = x
-        inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w)
+        inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w, q_point, neighbor_indices)
         feat = self.norm(x.feats)
         # feat = x.feats
 
@@ -214,35 +215,63 @@ class InterSO3ConvResidualBlock(nn.Module):
         else:
             self.skip_conv = nn.Identity()
 
-        if activation is None:
-            self.relu = None
-        else:
-            self.relu = getattr(F, activation)
+        # self.relu = getattr(F, activation)
+        self.relu = nn.LeakyReLU(0.1)
 
-        self.relu = getattr(F, activation)
-
-    def forward(self, x, inter_idx=None, inter_w=None):    
-        # x is a zptk.SphericalPointCloud with x.feat [nb, 1, np, na]
+    def forward(self, x, inter_idx=None, inter_w=None, q_point=None, neighbor_indices=None):
+        # x is a zptk.SphericalPointCloud with x.feat [nb, nc, np, na]
         skip_feature = x.feats
         x_feat = self.unary1(x.feats)
+
         x = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
-        inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w)  
+        print('neighbor_indices', neighbor_indices)
+        inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w, q_point, neighbor_indices)
         x_feat = self.norm(x.feats)
-        if self.relu is not None:
-            x_feat = self.relu(x_feat)
-        x_feat = self.relu(x_feat)      
+        x_feat = self.relu(x_feat)
+
         x_feat = self.unary2(x_feat)
 
-        if self.stride > 1:
+        if self.stride > 1: # or (q_point is not None and neighbor_indices is not None):
             skip_feature = zptk.functional.batched_index_select(skip_feature, 2, sample_idx.long())
-
+        elif q_point is not None and neighbor_indices is not None:
+            # [nb, nc, np1, na] -> [np1, nc] -> maxpool -> [np2, nc] -> [nb, nc, np2, na]
+            skip_feature = maxpool(skip_feature.permute(0, 3, 2, 1).squeeze(), neighbor_indices).permute(1,0).unsqueeze(0).unsqueeze(-1)
         skip_feature = self.skip_conv(skip_feature)
-        x_feat = self.relu(x_feat + skip_feature)
+        x_feat = x_feat + skip_feature
+        x_feat = self.relu(x_feat)
         
         x_out = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
         return inter_idx, inter_w, sample_idx, x_out
 
+class SingleSO3Conv(nn.Module):
+    def __init__(self, param):
+        super(SingleSO3Conv, self).__init__()
+        # single layer, not blocks
+        self.param = param
 
+        if param['type'] == 'inter_block':
+            self.conv = InterSO3ConvBlock(**param['args'])
+        elif param['type'] == 'inter_residualblock':
+            self.conv = InterSO3ConvResidualBlock(**param['args'])
+        else:
+            raise ValueError(f'No such type of SO3Conv {param["type"]}')
+
+    def forward(self, x, q_point=None, neighbor_indices=None):
+        inter_idx, inter_w, sample_idx = None, None, None
+        if self.param['type'] in ['inter', 'inter_block', 'inter_residualblock', 'separable_block', 's2_block', 'separable_s2_block', 'separable_s2_residualblock']:
+            inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w, q_point, neighbor_indices)
+            # import ipdb; ipdb.set_trace()
+
+            if self.param['args']['stride'] > 1 or q_point is not None:
+                inter_idx, inter_w = None, None
+        elif self.param['type'] in ['intra_block']:
+            # Intra Convolution
+            x = self.conv(x)
+        else:
+            raise ValueError(f'No such type of SO3Conv {self.param["type"]}')
+
+        return x
+    
 class BasicSO3ConvBlock(nn.Module):
     def __init__(self, params):
         super(BasicSO3ConvBlock, self).__init__()
@@ -452,7 +481,7 @@ class BatchNormBlock(nn.Module):
             return x + self.bias
 
     def __repr__(self):
-        return 'BatchNormBlockEPN(in_feat: {:d}, momentum: {:.3f}, only_bias: {:s})'.format(self.in_dim,
+        return 'BatchNormBlock(in_feat: {:d}, momentum: {:.3f}, only_bias: {:s})'.format(self.in_dim,
                                                                                          self.bn_momentum,
                                                                                          str(not self.use_bn))
 

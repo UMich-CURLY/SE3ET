@@ -84,12 +84,16 @@ def get_spherical_kernel_points_np(radius, kernel_size, multiplier=3):
     return kps
 
 def get_sphereical_kernel_points_from_ply(radius, kernel_size):
-    assert kernel_size <= 3 and kernel_size > 0
-    mapping = {1:24, 2:30, 3:66}
+    assert (kernel_size <= 3 or kernel_size == 15) and kernel_size > 0
     root = vgtk.__path__[0]
     anchors_path = os.path.join(root, 'data', 'anchors')
-    ply_path = os.path.join(anchors_path, f'kpsphere{mapping[kernel_size]:d}.ply')
-    ply = pctk.load_ply(ply_path).astype('float32')
+    if kernel_size == 15:
+        ply_path = os.path.join(anchors_path, 'k_015_center_3D.ply')
+        ply = pctk.load_ply(ply_path).astype('float32')
+    else:
+        mapping = {1:24, 2:30, 3:66}
+        ply_path = os.path.join(anchors_path, f'kpsphere{mapping[kernel_size]:d}.ply')
+        ply = pctk.load_ply(ply_path).astype('float32')
     def normalize(pc, radius):
         r = np.sqrt((pc**2).sum(1).max())
         return pc*radius/r
@@ -120,7 +124,8 @@ def inter_so3conv_blurring(xyz, feats, n_neighbor, radius, stride,
 def inter_so3conv_grouping(xyz, feats, stride, n_neighbor,
                           anchors, kernels, radius, sigma,
                           inter_idx=None, inter_w=None, lazy_sample=True,
-                          radius_expansion=1.0, pooling=None, norot=False):
+                          radius_expansion=1.0, pooling=None, norot=False, 
+                          q_point=None, neighbor_indices=None):
     '''Given input points and features, return the set of center points and features aggregated to the kernels centered at them. 
         xyz: [nb, 3, p1] coordinates
         feats: [nb, c_in, p1, na] features
@@ -130,6 +135,8 @@ def inter_so3conv_grouping(xyz, feats, stride, n_neighbor,
         inter_w: [nb, p2, na, ks, nn] kernel weights:
                     Influences of each neighbor points on each kernel points
                     under the respective SO3 rotations
+        q_point: [nb, 3, p2] precomputed downsampled point cloud coordinates
+        neighbor_indices: [p1, neighbor_limit] precomputed neighbor index
         return:
             new_feats: [nb, nc, nk, nb, na]
     '''
@@ -153,7 +160,8 @@ def inter_so3conv_grouping(xyz, feats, stride, n_neighbor,
 
     if inter_idx is None:
         grouped_xyz, inter_idx, sample_idx, new_xyz = zpconv.inter_zpconv_grouping_ball(xyz, stride,
-                                                                         radius * radius_expansion, n_neighbor, lazy_sample)
+                                                                         radius * radius_expansion, n_neighbor, lazy_sample,
+                                                                         q_point, neighbor_indices)
         if not norot:
             inter_w = inter_so3conv_grouping_anchor(grouped_xyz, anchors, kernels, sigma)
         else:

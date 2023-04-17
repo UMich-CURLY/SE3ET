@@ -513,12 +513,13 @@ class InterSO3Conv(nn.Module):
         self.register_buffer('anchors', torch.from_numpy(anchors))
         self.register_buffer('kernels', torch.from_numpy(kernels))
 
-    def forward(self, x, inter_idx=None, inter_w=None):
+    def forward(self, x, inter_idx=None, inter_w=None, q_point=None, neighbor_indices=None):
         inter_idx, inter_w, xyz, feats, sample_idx = \
             L.inter_so3conv_grouping(x.xyz, x.feats, self.stride, self.n_neighbor,
                                   self.anchors, self.kernels,
                                   self.radius, self.sigma,
-                                  inter_idx, inter_w, self.lazy_sample, pooling=self.pooling)
+                                  inter_idx, inter_w, self.lazy_sample, pooling=self.pooling,
+                                  q_point=q_point, neighbor_indices=neighbor_indices)
 
 
         # torch.set_printoptions(sci_mode=False)

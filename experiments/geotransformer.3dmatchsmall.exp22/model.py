@@ -13,7 +13,8 @@ from geotransformer.modules.geotransformer import (
     LocalGlobalRegistration,
 )
 
-from backbone import E2PN
+from backbone import KPConvFPN
+
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
@@ -21,14 +22,14 @@ class GeoTransformer(nn.Module):
         self.num_points_in_patch = cfg.model.num_points_in_patch
         self.matching_radius = cfg.model.ground_truth_matching_radius
 
-        self.backbone = E2PN(
+        self.backbone = KPConvFPN(
             cfg.backbone.input_dim,
             cfg.backbone.output_dim,
             cfg.backbone.init_dim,
+            cfg.backbone.kernel_size,
             cfg.backbone.init_radius,
             cfg.backbone.init_sigma,
             cfg.backbone.group_norm,
-            cfg.epn,
         )
 
         self.transformer = GeometricTransformer(

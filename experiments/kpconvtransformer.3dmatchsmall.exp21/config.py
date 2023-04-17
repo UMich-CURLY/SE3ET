@@ -79,7 +79,7 @@ _C.backbone.num_stages = 4
 _C.backbone.init_voxel_size = 0.025
 _C.backbone.kernel_size = 15
 _C.backbone.base_radius = 2.5
-_C.backbone.base_sigma = 1.0 #2.0
+_C.backbone.base_sigma = 2.0
 _C.backbone.init_radius = _C.backbone.base_radius * _C.backbone.init_voxel_size
 _C.backbone.init_sigma = _C.backbone.base_sigma * _C.backbone.init_voxel_size
 _C.backbone.group_norm = 32
@@ -92,31 +92,34 @@ _C.backbone.output_dim = 1024
 _C.epn = edict()
 # ======== SO(2) ======== 
 ### Valid parameters: kanchor < 10, quotient_factor >= 1, k = 15
-_C.epn.kanchor = 3 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
-_C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
-_C.epn.num_kernel_points = 15 # Number of kernel points
-_C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
+# _C.epn.kanchor = 3 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+# _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
+# _C.epn.num_kernel_points = 15 # Number of kernel points
+# _C.epn.non_sep_conv = True # ?????? full (non-separable) conv; True: E2PN, False: EPN ??????
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 12, quotient_factor  = 5, k = 13
 # _C.epn.kanchor = 12 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 5 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 13 # Number of kernel points
 # _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
+# _C.num_points = 4096
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 4, quotient_factor  = 3, k = 15
 # _C.epn.kanchor = 4 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 3 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 15 # Number of kernel points
 # _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
+# _C.num_points = 4096
 # ======== EPN ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
 # _C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 # _C.epn.quotient_factor = 1 # > 1 enables quotient features. 2 results in C6/C2. 
 # _C.epn.num_kernel_points = 13 # Number of kernel points
 # _C.epn.non_sep_conv = False # full (non-separable) conv; True: E2PN, False: EPN
+# _C.num_points = 2048
 # ======== KPCONV ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
-# _C.epn.kanchor = 1
+_C.epn.kanchor = 1
 # ========
 _C.epn.num_points = _C.train.point_limit
 _C.epn.epn_kernel = False  # whether or not use the kernel file from epn # always false

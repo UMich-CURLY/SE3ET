@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
 from torch.nn.init import kaiming_uniform_
+import numpy as np
 
 import geotransformer.modules.transformer.utils_epn.anchors as L
 from geotransformer.modules.kpconv.kernel_points import load_kernels

@@ -13,7 +13,9 @@ from geotransformer.modules.geotransformer import (
     LocalGlobalRegistration,
 )
 
-from backbone import E2PN
+from backbone import E2PNKPConv
+
+from geotransformer.modules.transformer import SinusoidalPositionalEmbedding, RPEConditionalTransformer
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
@@ -21,14 +23,14 @@ class GeoTransformer(nn.Module):
         self.num_points_in_patch = cfg.model.num_points_in_patch
         self.matching_radius = cfg.model.ground_truth_matching_radius
 
-        self.backbone = E2PN(
+        self.backbone = E2PNKPConv(
             cfg.backbone.input_dim,
             cfg.backbone.output_dim,
             cfg.backbone.init_dim,
+            cfg.backbone.kernel_size,
             cfg.backbone.init_radius,
             cfg.backbone.init_sigma,
             cfg.backbone.group_norm,
-            cfg.epn,
         )
 
         self.transformer = GeometricTransformer(
@@ -40,7 +42,7 @@ class GeoTransformer(nn.Module):
             cfg.geotransformer.sigma_d,
             cfg.geotransformer.sigma_a,
             cfg.geotransformer.angle_k,
-            reduction_a=cfg.geotransformer.reduction_a,
+            reduction_a=cfg.geotransformer.reduction_a
         )
 
         self.coarse_target = SuperPointTargetGenerator(
