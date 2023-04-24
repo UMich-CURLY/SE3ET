@@ -224,7 +224,6 @@ class InterSO3ConvResidualBlock(nn.Module):
         x_feat = self.unary1(x.feats)
 
         x = zptk.SphericalPointCloud(x.xyz, x_feat, x.anchors)
-        print('neighbor_indices', neighbor_indices)
         inter_idx, inter_w, sample_idx, x = self.conv(x, inter_idx, inter_w, q_point, neighbor_indices)
         x_feat = self.norm(x.feats)
         x_feat = self.relu(x_feat)

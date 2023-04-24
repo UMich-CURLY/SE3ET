@@ -50,6 +50,14 @@ at::Tensor radius_neighbors(
     vec_neighbor_indices,
     radius
   );
+  // radius_neighbors_cpu_2(
+  //   vec_q_points,
+  //   vec_s_points,
+  //   vec_q_lengths,
+  //   vec_s_lengths,
+  //   vec_neighbor_indices,
+  //   radius
+  // );
 
   std::size_t max_neighbors = vec_neighbor_indices.size() / total_q_points;
 

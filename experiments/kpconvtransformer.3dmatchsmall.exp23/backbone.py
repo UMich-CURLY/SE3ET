@@ -114,102 +114,40 @@ class E2PNKPConv(nn.Module):
         subsampling_list = data_dict['subsampling']
         upsampling_list = data_dict['upsampling']
 
-        # separate ref points & src points
-        ref_length_s1 = data_dict['lengths'][0][0].item()
-        ref_length_s2 = data_dict['lengths'][1][0].item()
-        ref_length_s3 = data_dict['lengths'][2][0].item()
-        ref_length_s4 = data_dict['lengths'][3][0].item()
+        # change input point clouds to desired format
+        point_s1 = points_list[0].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
+        point_s2 = points_list[1].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
+        point_s3 = points_list[2].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
+        point_s4 = points_list[3].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
 
-        # obtain ref point and src point separately
-        # TODO: merge ref and src?
-        ref_point_s1 = data_dict['points'][0][:ref_length_s1].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        ref_point_s2 = data_dict['points'][1][:ref_length_s2].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        ref_point_s3 = data_dict['points'][2][:ref_length_s3].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        ref_point_s4 = data_dict['points'][3][:ref_length_s4].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-
-        src_point_s1 = data_dict['points'][0][ref_length_s1:].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        src_point_s2 = data_dict['points'][1][ref_length_s2:].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        src_point_s3 = data_dict['points'][2][ref_length_s3:].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-        src_point_s4 = data_dict['points'][3][ref_length_s4:].unsqueeze(0).permute(0,2,1).contiguous() # [np, 3] -> [nb, 3, np]
-
-        # obtain ref feat and src subsampling list separately
-        ref_subsampling_s2 = subsampling_list[0][:ref_length_s2]
-        ref_subsampling_s3 = subsampling_list[1][:ref_length_s3]
-        ref_subsampling_s4 = subsampling_list[2][:ref_length_s4]
-
-        src_subsampling_s2 = subsampling_list[0][ref_length_s2:]-ref_length_s1
-        src_subsampling_s3 = subsampling_list[1][ref_length_s3:]-ref_length_s2
-        src_subsampling_s4 = subsampling_list[2][ref_length_s4:]-ref_length_s3
-
-        # obtain ref feat and src feat separately
-        ref_feats_s1 = feats[:ref_length_s1].permute(1,0).unsqueeze(0).unsqueeze(-1) # [np, nc] -> [nb, nc, np, na]
-        src_feats_s1 = feats[ref_length_s1:].permute(1,0).unsqueeze(0).unsqueeze(-1)
-
-        # max_mem = gpu_mem_usage()
-        # print('max_mem after input', max_mem)
+        # change input features to desired format
+        feats_s1 = feats.permute(1,0).unsqueeze(0).unsqueeze(-1) # [np, nc] -> [nb, nc, np, na]
                 
-        # TODO: input neighbot list as well
-
-        ### ref point ###
         # preprocess input point cloud
-        ref_input_s1 = zptk.SphericalPointCloud(ref_point_s1, ref_feats_s1, None)
+        input_s1 = zptk.SphericalPointCloud(point_s1, feats_s1, None)
         
         # stage 1 layers
-        ref_input_s1 = self.encoder1_1(ref_input_s1)
-        ref_input_s1 = self.encoder1_2(ref_input_s1)
-        ref_feats_s1 = ref_input_s1.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
-        
-        # max_mem = gpu_mem_usage()
-        # print('max_mem after stage 1', max_mem)
-        # stage 2 layers
-        ref_input_s2 = self.encoder2_1(ref_input_s1, q_point=ref_point_s2, neighbor_indices=ref_subsampling_s2) # (before downsampling, after downsampling)
-        ref_input_s2 = self.encoder2_2(ref_input_s2)
-        ref_input_s2 = self.encoder2_3(ref_input_s2)
-        ref_feats_s2 = ref_input_s2.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
-        
-        # stage 3 layers
-        ref_input_s3 = self.encoder3_1(ref_input_s2, q_point=ref_point_s3, neighbor_indices=ref_subsampling_s3) # (before downsampling, after downsampling)
-        ref_input_s3 = self.encoder3_2(ref_input_s3)
-        ref_input_s3 = self.encoder3_3(ref_input_s3)
-        ref_feats_s3 = ref_input_s3.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
-        
-        # stage 4 layers
-        ref_input_s4 = self.encoder4_1(ref_input_s3, q_point=ref_point_s4, neighbor_indices=ref_subsampling_s4) # (before downsampling, after downsampling)
-        ref_input_s4 = self.encoder4_2(ref_input_s4)
-        ref_input_s4 = self.encoder4_3(ref_input_s4)
-        ref_feats_s4 = ref_input_s4.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
-
-        ### src point ###
-        # preprocess input point cloud
-        src_input_s1 = zptk.SphericalPointCloud(src_point_s1, src_feats_s1, None)
-        
-        # stage 1 layers
-        src_input_s1 = self.encoder1_1(src_input_s1)
-        src_input_s1 = self.encoder1_2(src_input_s1)
-        src_feats_s1 = src_input_s1.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
+        input_s1 = self.encoder1_1(input_s1, neighbor_indices=neighbors_list[0])
+        input_s1 = self.encoder1_2(input_s1, neighbor_indices=neighbors_list[0])
+        feats_s1 = input_s1.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
         
         # stage 2 layers
-        src_input_s2 = self.encoder2_1(src_input_s1, q_point=src_point_s2, neighbor_indices=src_subsampling_s2) # (before downsampling, after downsampling)
-        src_input_s2 = self.encoder2_2(src_input_s2)
-        src_input_s2 = self.encoder2_3(src_input_s2)
-        src_feats_s2 = src_input_s2.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
+        input_s2 = self.encoder2_1(input_s1, q_point=point_s2, neighbor_indices=subsampling_list[0]) # (before downsampling, after downsampling)
+        input_s2 = self.encoder2_2(input_s2, neighbor_indices=neighbors_list[1])
+        input_s2 = self.encoder2_3(input_s2, neighbor_indices=neighbors_list[1])
+        feats_s2 = input_s2.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
         
         # stage 3 layers
-        src_input_s3 = self.encoder3_1(src_input_s2, q_point=src_point_s3, neighbor_indices=src_subsampling_s3) # (before downsampling, after downsampling)
-        src_input_s3 = self.encoder3_2(src_input_s3)
-        src_input_s3 = self.encoder3_3(src_input_s3)
-        src_feats_s3 = src_input_s3.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
+        input_s3 = self.encoder3_1(input_s2, q_point=point_s3, neighbor_indices=subsampling_list[1]) # (before downsampling, after downsampling)
+        input_s3 = self.encoder3_2(input_s3, neighbor_indices=neighbors_list[2])
+        input_s3 = self.encoder3_3(input_s3, neighbor_indices=neighbors_list[2])
+        feats_s3 = input_s3.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
         
         # stage 4 layers
-        src_input_s4 = self.encoder4_1(src_input_s3, q_point=src_point_s4, neighbor_indices=src_subsampling_s4) # (before downsampling, after downsampling)
-        src_input_s4 = self.encoder4_2(src_input_s4)
-        src_input_s4 = self.encoder4_3(src_input_s4)
-        src_feats_s4 = src_input_s4.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
-
-        # combine ref and src features
-        feats_s4 = torch.cat((ref_feats_s4, src_feats_s4), 0)
-        feats_s3 = torch.cat((ref_feats_s3, src_feats_s3), 0)
-        feats_s2 = torch.cat((ref_feats_s2, src_feats_s2), 0)
+        input_s4 = self.encoder4_1(input_s3, q_point=point_s4, neighbor_indices=subsampling_list[2]) # (before downsampling, after downsampling)
+        input_s4 = self.encoder4_2(input_s4, neighbor_indices=neighbors_list[3])
+        input_s4 = self.encoder4_3(input_s4, neighbor_indices=neighbors_list[3])
+        feats_s4 = input_s4.feats.permute(0, 3, 2, 1).squeeze() # [nb, nc, np, na] -> [np, nc]
 
         latent_s4 = feats_s4
         feats_list.append(feats_s4)
@@ -225,5 +163,7 @@ class E2PNKPConv(nn.Module):
         feats_list.append(latent_s2)
 
         feats_list.reverse()
+
+        torch.cuda.empty_cache()
 
         return feats_list

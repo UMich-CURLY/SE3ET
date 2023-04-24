@@ -421,33 +421,32 @@ def inter_blurring_naive(inter_idx, feats, alpha=0.5):
 def inter_zpconv_grouping_ball(xyz, stride, radius, n_neighbor, lazy_sample=True, q_point=None, neighbor_indices=None):
     """Sample a set of center points using the stride, and find ball neighbors for them. 
     Return the indices and coordinates of the sampled center points and their neighbors. """
-    if neighbor_indices is not None:
-        print('inter_zpconv_grouping_ball neighbor_indices before\n', neighbor_indices)
+    # if neighbor_indices is not None:
+    #     print('inter_zpconv_grouping_ball neighbor_indices before\n', neighbor_indices)
     if q_point is not None and neighbor_indices is not None:
         # pre-downsampling, use neighbor_indicies to find neighbors
         sample_xyz = q_point
         # use the nearest neighbor_indices [np, neighbor_limit] as downsampled point index [nb, np2]
-        idx = neighbor_indices.clone()
-        idx = idx[:,0].view(xyz.shape[0], -1).int().contiguous() #to(xyz.device)
+        idx = neighbor_indices[:,0].view(xyz.shape[0], -1).int().contiguous()
         # [b, 3, p2] x [b, 3, p1] -> [b, p2, nn] x [b, 3, p2, nn]
         # ball_idx, grouped_xyz = ball_query(sample_xyz, xyz, radius, n_neighbor)
         # neighbor_indices [np2, neighbor_limit] -> index [nb, np2, nn]
-        ball_idx = neighbor_indices.clone()
-        ball_idx = ball_idx.unsqueeze(0).int().contiguous() #to(xyz.device)
+        ball_idx = neighbor_indices.unsqueeze(0).int().contiguous()        
+        xyz_with_shadow = torch.cat([xyz, torch.zeros_like(xyz[:, :, :1]) + 1e6], 2)  # [nb, 3, np1] -> # [nb, 3, np1+1]
         # [nb, 3, np1] x [nb, np2, nn] -> [nb, 3, np2, nn]
-        grouped_xyz = pctk.group_nd(xyz, ball_idx)
+        grouped_xyz = pctk.group_nd(xyz_with_shadow, ball_idx)
     elif neighbor_indices is not None:
         # not downsampled, use neighbor_indicies to find neighbors
         n_sample = xyz.shape[2]
         idx, sample_xyz = pctk.furthest_sample(xyz, n_sample, lazy_sample) 
         # neighbor_indices [np2, neighbor_limit] -> index [nb, np2, nn]
-        ball_idx = neighbor_indices.clone()
-        ball_idx = ball_idx.unsqueeze(0).int().contiguous() #to(xyz.device)
+        ball_idx = neighbor_indices.unsqueeze(0).int().contiguous()
         # print('ball_idx from neighbor_indices', ball_idx.shape, '\n', ball_idx)
         # ball_idx_, grouped_xyz_ = ball_query(sample_xyz, xyz, radius, n_neighbor)
         # print('ball_idx from ball query', ball_idx_.shape, '\n', ball_idx_)
+        xyz_with_shadow = torch.cat([xyz, torch.zeros_like(xyz[:, :, :1]) + 1e6], 2)  # [nb, 3, np1] -> # [nb, 3, np1+1]
         # [nb, 3, np1] x [nb, np2, nn] -> [nb, 3, np2, nn]
-        grouped_xyz = pctk.group_nd(xyz, ball_idx)
+        grouped_xyz = pctk.group_nd(xyz_with_shadow, ball_idx)
         # grouped_xyz = batched_index_select(xyz, 2, ball_idx)
         # print('grouped_xyz from neighbor_indices', grouped_xyz.shape, '\n', grouped_xyz)
     else:
@@ -459,9 +458,9 @@ def inter_zpconv_grouping_ball(xyz, stride, radius, n_neighbor, lazy_sample=True
     # [b, 3, p2, nn] x [b, 3, p2] -> [b, 3, p2, nn]
     grouped_xyz = grouped_xyz - sample_xyz.unsqueeze(3)
     # [b, 3, p2, nn], [b, p2, nn], [b, p2], [b, 3, p2]
-    if neighbor_indices is not None:
-        print('inter_zpconv_grouping_ball neighbor_indices after\n', neighbor_indices)
-    print('ball_idx\n', ball_idx)
+    # if neighbor_indices is not None:
+    #     print('inter_zpconv_grouping_ball neighbor_indices after\n', neighbor_indices)
+    # print('ball_idx\n', ball_idx)
     torch.cuda.empty_cache()
     return grouped_xyz, ball_idx, idx, sample_xyz
 

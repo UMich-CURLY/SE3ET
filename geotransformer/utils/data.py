@@ -31,7 +31,6 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
     for i in range(num_stages):
         cur_points = points_list[i]
         cur_lengths = lengths_list[i]
-
         neighbors = radius_search(
             cur_points,
             cur_points,

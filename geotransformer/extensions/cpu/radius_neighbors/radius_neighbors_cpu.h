@@ -14,3 +14,12 @@ void radius_neighbors_cpu(
   std::vector<long>& neighbor_indices,
   float radius
 );
+
+void radius_neighbors_cpu_2(
+  std::vector<PointXYZ>& q_points,
+  std::vector<PointXYZ>& s_points,
+  std::vector<long>& q_lengths,
+  std::vector<long>& s_lengths,
+  std::vector<long>& neighbor_indices,
+  float radius
+);
