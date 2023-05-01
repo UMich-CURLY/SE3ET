@@ -21,7 +21,8 @@ import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
 from torch.nn.init import kaiming_uniform_
-from geotransformer.modules.e2pn.kernel_points import load_kernels
+# from geotransformer.modules.e2pn.kernel_points import load_kernels
+from geotransformer.modules.kpconv.kernel_points import load_kernels
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -381,7 +382,25 @@ class KPConv(nn.Module):
 #           Complex blocks
 #       \********************/
 #
+class GroupNorm(nn.Module):
+    def __init__(self, num_groups, num_channels):
+        r"""Initialize a group normalization block.
 
+        Args:
+            num_groups: number of groups
+            num_channels: feature dimension
+        """
+        super(GroupNorm, self).__init__()
+        self.num_groups = num_groups
+        self.num_channels = num_channels
+        self.norm = nn.GroupNorm(self.num_groups, self.num_channels)
+
+    def forward(self, x):
+        x = x.transpose(0, 1).unsqueeze(0)  # (N, C) -> (B, C, N)
+        x = self.norm(x)
+        x = x.squeeze(0).transpose(0, 1)  # (B, C, N) -> (N, C)
+        return x.squeeze()
+    
 
 class BatchNormBlock(nn.Module):
 
@@ -425,7 +444,7 @@ class BatchNormBlock(nn.Module):
 
 class UnaryBlock(nn.Module):
 
-    def __init__(self, in_dim, out_dim, use_bn, bn_momentum, no_relu=False):
+    def __init__(self, in_dim, out_dim, group_norm, use_bn, bn_momentum, no_relu=False):
         """
         Initialize a standard unary block with its ReLU and BatchNorm.
         :param in_dim: dimension input features
@@ -441,14 +460,16 @@ class UnaryBlock(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.mlp = nn.Linear(in_dim, out_dim, bias=False)
-        self.batch_norm = BatchNormBlock(out_dim, self.use_bn, self.bn_momentum)
+        # self.batch_norm = BatchNormBlock(out_dim, self.use_bn, self.bn_momentum)
+        self.norm = GroupNorm(group_norm, out_dim)
         if not no_relu:
             self.leaky_relu = nn.LeakyReLU(0.1)
         return
 
     def forward(self, x, batch=None):
         x = self.mlp(x)
-        x = self.batch_norm(x)
+        # x = self.batch_norm(x)
+        x = self.norm(x)
         if not self.no_relu:
             x = self.leaky_relu(x)
         return x
@@ -462,7 +483,7 @@ class UnaryBlock(nn.Module):
 
 class SimpleBlock(nn.Module):
 
-    def __init__(self, block_name, in_dim, out_dim, radius, layer_ind, config):
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, group_norm, config):
         """
         Initialize a simple convolution block with its ReLU and BatchNorm.
         :param in_dim: dimension input features
@@ -473,12 +494,12 @@ class SimpleBlock(nn.Module):
         super(SimpleBlock, self).__init__()
 
         # get KP_extent from current radius
-        current_extent = radius * config.KP_extent / config.conv_radius
+        # current_extent = radius * config.KP_extent / config.conv_radius
 
         # Get other parameters
         self.bn_momentum = config.batch_norm_momentum
         self.use_bn = config.use_batch_norm
-        self.layer_ind = layer_ind
+        # self.layer_ind = layer_ind
         self.block_name = block_name
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -487,8 +508,8 @@ class SimpleBlock(nn.Module):
         self.KPConv = KPConv(config.num_kernel_points,
                              config.in_points_dim,
                              in_dim,
-                             out_dim // 2,
-                             current_extent,
+                             out_dim,
+                             sigma,
                              radius,
                              fixed_kernel_points=config.fixed_kernel_points,
                              KP_influence=config.KP_influence,
@@ -497,29 +518,23 @@ class SimpleBlock(nn.Module):
                              modulated=config.modulated)
 
         # Other opperations
-        self.batch_norm = BatchNormBlock(out_dim // 2, self.use_bn, self.bn_momentum)
+        self.norm = GroupNorm(group_norm, out_dim)
+        self.batch_norm = BatchNormBlock(out_dim, self.use_bn, self.bn_momentum)
         self.leaky_relu = nn.LeakyReLU(0.1)
 
         return
 
-    def forward(self, x, batch):
-
-        if 'strided' in self.block_name:
-            q_pts = batch.points[self.layer_ind + 1]
-            s_pts = batch.points[self.layer_ind]
-            neighb_inds = batch.pools[self.layer_ind]
-        else:
-            q_pts = batch.points[self.layer_ind]
-            s_pts = batch.points[self.layer_ind]
-            neighb_inds = batch.neighbors[self.layer_ind]
-
+    def forward(self, x, q_pts, s_pts, neighb_inds):
         x = self.KPConv(q_pts, s_pts, neighb_inds, x)
-        return self.leaky_relu(self.batch_norm(x))
+        # self.batch_norm(x)
+        x = self.norm(x)
+        x = self.leaky_relu(x)
+        return x
 
 
 class ResnetBottleneckBlock(nn.Module):
 
-    def __init__(self, block_name, in_dim, out_dim, radius, layer_ind, config):
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, group_norm, config):
         """
         Initialize a resnet bottleneck block.
         :param in_dim: dimension input features
@@ -536,22 +551,22 @@ class ResnetBottleneckBlock(nn.Module):
         self.bn_momentum = config.batch_norm_momentum
         self.use_bn = config.use_batch_norm
         self.block_name = block_name
-        self.layer_ind = layer_ind
+        # self.layer_ind = layer_ind
         self.in_dim = in_dim
         self.out_dim = out_dim
 
         # First downscaling mlp
         if in_dim != out_dim // 4:
-            self.unary1 = UnaryBlock(in_dim, out_dim // 4, self.use_bn, self.bn_momentum)
+            self.unary1 = UnaryBlock(in_dim, out_dim // 4, group_norm, self.use_bn, self.bn_momentum)
         else:
             self.unary1 = nn.Identity()
 
         # KPConv block
         self.KPConv = KPConv(config.num_kernel_points,
-                             config.in_points_dim,
+                             3, # config.in_points_dim,
                              out_dim // 4,
                              out_dim // 4,
-                             current_extent,
+                             sigma,
                              radius,
                              fixed_kernel_points=config.fixed_kernel_points,
                              KP_influence=config.KP_influence,
@@ -559,13 +574,14 @@ class ResnetBottleneckBlock(nn.Module):
                              deformable='deform' in block_name,
                              modulated=config.modulated)
         self.batch_norm_conv = BatchNormBlock(out_dim // 4, self.use_bn, self.bn_momentum)
+        self.norm_conv = GroupNorm(group_norm, out_dim // 4)
 
         # Second upscaling mlp
-        self.unary2 = UnaryBlock(out_dim // 4, out_dim, self.use_bn, self.bn_momentum, no_relu=True)
+        self.unary2 = UnaryBlock(out_dim // 4, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=True)
 
         # Shortcut optional mpl
         if in_dim != out_dim:
-            self.unary_shortcut = UnaryBlock(in_dim, out_dim, self.use_bn, self.bn_momentum, no_relu=True)
+            self.unary_shortcut = UnaryBlock(in_dim, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=True)
         else:
             self.unary_shortcut = nn.Identity()
 
@@ -574,23 +590,15 @@ class ResnetBottleneckBlock(nn.Module):
 
         return
 
-    def forward(self, features, batch):
-
-        if 'strided' in self.block_name:
-            q_pts = batch.points[self.layer_ind + 1]
-            s_pts = batch.points[self.layer_ind]
-            neighb_inds = batch.pools[self.layer_ind]
-        else:
-            q_pts = batch.points[self.layer_ind]
-            s_pts = batch.points[self.layer_ind]
-            neighb_inds = batch.neighbors[self.layer_ind]
-
+    def forward(self, features, q_pts, s_pts, neighb_inds):
         # First downscaling mlp
         x = self.unary1(features)
 
         # Convolution
         x = self.KPConv(q_pts, s_pts, neighb_inds, x)
-        x = self.leaky_relu(self.batch_norm_conv(x))
+        # x = self.batch_norm_conv(x)
+        x = self.norm_conv(x)
+        x = self.leaky_relu(x)
 
         # Second upscaling mlp
         x = self.unary2(x)

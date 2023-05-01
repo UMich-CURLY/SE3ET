@@ -11,7 +11,7 @@ import geotransformer.modules.transformer.utils_epn.anchors as L
 from geotransformer.modules.kpconv.kernel_points import load_kernels
 # from geotransformer.modules.e2pn.kernel_points import load_kernels
 # import geotransformer.modules.e2pn.anchors as L
-from geotransformer.modules.e2pn.blocks import radius_gaussian, gather, max_pool, KPConv, BatchNormBlock
+from geotransformer.modules.e2pn.blocks import radius_gaussian, gather, max_pool, KPConv, GroupNorm
 import torch.nn.functional as F
 
 class KPConvInterSO3(nn.Module):
@@ -574,7 +574,7 @@ class BatchNormBlockEPN(nn.Module):
 
 class UnaryBlockEPN(nn.Module):
     
-    def __init__(self, in_dim, out_dim, use_bn, bn_momentum, no_relu=False):
+    def __init__(self, in_dim, out_dim, group_norm, use_bn, bn_momentum, no_relu=False):
         """
         Initialize a standard unary block with its ReLU and BatchNorm.
         :param in_dim: dimension input features
@@ -591,13 +591,15 @@ class UnaryBlockEPN(nn.Module):
         self.out_dim = out_dim
         self.mlp = nn.Linear(in_dim, out_dim) #, bias=False)
         
-        self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        # self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        self.norm = GroupNormEPN(group_norm, out_dim)
         self.leaky_relu = nn.LeakyReLU(0.1)
 
     def forward(self, x, batch=None):
         np, na, nc = x.shape
         x = self.mlp(x) #.reshape(np, na, self.out_dim)
-        x = self.batch_norm(x)
+        # x = self.batch_norm(x)
+        x = self.norm(x)
         if not self.no_relu:
             x = self.leaky_relu(x)
         return x
@@ -619,8 +621,27 @@ class LastUnaryBlockEPN(nn.Module):
         return x
 
 
+class GroupNormEPN(nn.Module):
+    def __init__(self, num_groups, num_channels):
+        r"""Initialize a group normalization block.
+
+        Args:
+            num_groups: number of groups
+            num_channels: feature dimension
+        """
+        super(GroupNormEPN, self).__init__()
+        self.num_groups = num_groups
+        self.num_channels = num_channels
+        self.norm = nn.GroupNorm(self.num_groups, self.num_channels)
+
+    def forward(self, x):
+        x = x.transpose(0, 2).unsqueeze(0)  # (N, A, C) -> (B, C, A, N)
+        x = self.norm(x) # (B, C, *)
+        x = x.squeeze(0).transpose(0, 2)  # (B, C, A, N) -> (N, A, C)
+        return x.squeeze()
+
 class KPConvInterSO3Block(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, group_norm, config) -> None:
         super().__init__()
 
         # current_extent = radius * config.KP_extent / config.conv_radius
@@ -650,16 +671,20 @@ class KPConvInterSO3Block(nn.Module):
                                              gather_by_idxing=config.gather_by_idxing,
                                              )
         # Other opperations
-        self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        # self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        self.norm = GroupNormEPN(group_norm, out_dim)
         self.leaky_relu = nn.LeakyReLU(0.1)
 
     def forward(self, x, q_pts, s_pts, neighb_inds):
         x = self.conv(q_pts, s_pts, neighb_inds, x)
-        return self.leaky_relu(self.batch_norm(x))
+        # self.batch_norm(x)
+        x = self.norm(x)
+        x = self.leaky_relu(x)
+        return x
 
 
 class KPConvIntraSO3Block(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, group_norm, config) -> None:
         super().__init__()
         
         # Get other parameters
@@ -670,16 +695,20 @@ class KPConvIntraSO3Block(nn.Module):
         self.out_dim = out_dim
 
         self.conv = KPConvIntraSO3(config.kanchor, in_dim, out_dim)
-        self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        # self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
+        self.norm = GroupNormEPN(group_norm, out_dim)
         self.leaky_relu = nn.LeakyReLU(0.1)
 
     def forward(self, x):
         x = self.conv(x)
+        # self.batch_norm(x)
+        x = self.norm(x)
+        x = self.leaky_relu(x)
         return self.leaky_relu(self.batch_norm(x))
 
 
 class SimpleBlockEPN(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, group_norm, config) -> None:
         super().__init__()
         
         self.bn_momentum = config.batch_norm_momentum
@@ -689,18 +718,25 @@ class SimpleBlockEPN(nn.Module):
         self.out_dim = out_dim
         self.non_sep_conv = config.non_sep_conv
 
-        self.interso3 = KPConvInterSO3Block(block_name, self.in_dim, self.out_dim, radius, sigma, config)
+        self.interso3 = KPConvInterSO3Block(block_name, self.in_dim, self.out_dim, radius, sigma, group_norm, config)
         if not self.non_sep_conv:
-            self.intraso3 = KPConvIntraSO3Block(block_name, self.out_dim, self.out_dim, config)
+            self.intraso3 = KPConvIntraSO3Block(block_name, self.out_dim, self.out_dim, group_norm, config)
+
+        # Other opperations
+        self.norm = GroupNormEPN(group_norm, out_dim)
+        self.leaky_relu = nn.LeakyReLU(0.1)
 
     def forward(self, x, q_pts, s_pts, neighb_inds):
         x = self.interso3(x, q_pts, s_pts, neighb_inds)
         if not self.non_sep_conv:
             x = self.intraso3(x)
+
+        x = self.norm(x)
+        x = self.leaky_relu(x)
         return x
 
 class ResnetBottleneckBlockEPN(nn.Module):
-    def __init__(self, block_name, in_dim, out_dim, radius, sigma, config) -> None:
+    def __init__(self, block_name, in_dim, out_dim, radius, sigma, group_norm, config) -> None:
         super().__init__()
         
         self.bn_momentum = config.batch_norm_momentum
@@ -714,22 +750,23 @@ class ResnetBottleneckBlockEPN(nn.Module):
 
         # First downscaling mlp
         if in_dim != out_dim // 4:
-            self.unary1 = UnaryBlockEPN(in_dim, out_dim // 4, self.use_bn, self.bn_momentum)
+            self.unary1 = UnaryBlockEPN(in_dim, out_dim // 4, group_norm, self.use_bn, self.bn_momentum)
         else:
             self.unary1 = nn.Identity()
 
-        self.interso3 = KPConvInterSO3Block(block_name, out_dim // 4, out_dim // 4, radius, sigma, config)
+        self.interso3 = KPConvInterSO3Block(block_name, out_dim // 4, out_dim // 4, radius, sigma, group_norm, config)
         if not self.non_sep_conv:
-            self.intraso3 = KPConvIntraSO3Block(block_name, out_dim // 4, out_dim // 4, config)
+            self.intraso3 = KPConvIntraSO3Block(block_name, out_dim // 4, out_dim // 4, group_norm, config)
 
-        self.norm = nn.InstanceNorm2d(out_dim // 4, affine=False)
+        # self.norm = nn.InstanceNorm2d(out_dim // 4, affine=False)
+        self.norm = GroupNormEPN(group_norm, out_dim // 4)
         
         # Second upscaling mlp
-        self.unary2 = UnaryBlockEPN(out_dim // 4, out_dim, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        self.unary2 = UnaryBlockEPN(out_dim // 4, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
         
         # Shortcut optional mpl
         if in_dim != out_dim:
-            self.skip_conv = UnaryBlockEPN(in_dim, out_dim, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+            self.skip_conv = UnaryBlockEPN(in_dim, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
         else:
             self.skip_conv = nn.Identity()
             # NOTE: no_relu is diff from Predator
@@ -838,6 +875,6 @@ class LiftBlockEPN(nn.Module):
         self.kanchor = config.kanchor
 
     def forward(self, x):
-        np, nc = x.shape                # p,a,c
-        x = x.unsqueeze(1).expand(-1, self.kanchor, -1)
+        np, nc = x.shape                
+        x = x.unsqueeze(1).expand(-1, self.kanchor, -1) # (N, C) -> (N, A, C)
         return x

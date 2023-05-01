@@ -1,5 +1,6 @@
 from geotransformer.datasets.registration.threedmatch.dataset import ThreeDMatchPairDataset
 from geotransformer.datasets.registration.threedmatch_small.dataset import ThreeDMatchPairSmallDataset
+# from geotransformer.datasets.registration.threedmatch_one.dataset import ThreeDMatchOnePairDataset
 from geotransformer.utils.data import (
     registration_collate_fn_stack_mode,
     calibrate_neighbors_stack_mode,
