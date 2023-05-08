@@ -20,6 +20,8 @@ vs, v_adjs, v_level2s, v_opps, vRs = fr.icosahedron_trimesh_to_vertices(ANCHOR_P
 
 Rs, R_idx, canonical_relative = fr.icosahedron_so3_trimesh(ANCHOR_PATH, GAMMA_SIZE)
 
+vs_tetra, v_adjs_tetra, vRs_tetra, ecs_tetra, face_normals_tetra = fr.tetrahedron_trimesh_to_vertices()
+
 def select_anchor(anchors, k):
     if k == 1:
         return anchors[29][None]
@@ -62,11 +64,27 @@ def get_canonical_relative():
 def get_relative_index():
     return fr.get_relativeR_index(Rs)
 
-def get_anchorsV():
-    return vRs
+def get_anchorsV(tetra=False):
+    """return 60*3*3 matrix as rotation anchors determined by the symmetry of icosahedron vertices"""
+    if tetra:
+        return vRs_tetra.copy()
+    else:
+        return vRs.copy()
+
+def get_anchorsV12(tetra=False):
+    """return 12*3*3 matrix as the section (representative rotation) of icosahedron vertices. 
+    For each vertex on the sphere (icosahedron) (coset space S2 = SO(3)/SO(2)), 
+    pick one rotation as its representation in SO(3), which is also called a section function (G/H -> G)"""
+    if tetra:
+        return vRs_tetra.reshape(4, 3, 3, 3)[:,0].copy()    # 4*3*3
+    else:
+        return vRs.reshape(12, 5, 3, 3)[:,0].copy()    # 12*3*3
 
 def get_icosahedron_vertices():
-    return vs, v_adjs, v_level2s, v_opps, vRs
+    return vs.copy(), v_adjs.copy(), v_level2s.copy(), v_opps.copy(), vRs.copy()
+
+def get_tetrahedron_vertices():
+    return vs_tetra.copy(), v_adjs_tetra.copy(), vRs_tetra.copy(), ecs_tetra.copy(), face_normals_tetra.copy()
 
 def get_relativeV_index():
     trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)

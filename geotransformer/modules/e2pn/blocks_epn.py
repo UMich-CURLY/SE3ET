@@ -113,7 +113,14 @@ class KPConvInterSO3(nn.Module):
         :return: the tensor of kernel points
         """
         # Create one kernel disposition (as numpy array). Choose the KP distance to center thanks to the KP extent
-        if self.kanchor < 10:
+        if self.kanchor == 1:
+            K_points_numpy = load_kernels(self.radius,
+                                    self.K,
+                                    dimension=3,
+                                    fixed=self.fixed_kernel_points,
+                                    equiv_mode=self.equiv_mode_kp,
+                                    )
+        elif self.fixed_kernel_points == 'verticals':
             K_points_numpy = load_kernels(self.radius,
                                     self.K,
                                     dimension=3,
@@ -121,11 +128,36 @@ class KPConvInterSO3(nn.Module):
                                     equiv_mode=self.equiv_mode_kp,
                                     )
         else:
-            assert self.K == 13, self.K
-            vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
-            K_points_numpy = vs * 0.66 * self.radius
-            K_points_numpy = np.concatenate([K_points_numpy, np.array([[0,0,0]], dtype=K_points_numpy.dtype)], axis=0)    # 13*3
+            assert self.fixed_kernel_points == 'center', self.fixed_kernel_points
+            if self.kanchor == 12 and self.quotient_factor == 5:
+                assert self.K == 13, self.K
+            elif self.kanchor == 60 and self.quotient_factor == 1:
+                assert self.K == 13, self.K
+            elif self.kanchor == 4 and self.quotient_factor == 3:
+                assert self.K == 15, self.K
+            elif self.kanchor == 12 and self.quotient_factor == 1:
+                assert self.K == 15, self.K
+            else:
+                raise NotImplementedError
+            
+            if self.kanchor * self.quotient_factor == 60:
+                vs, v_adjs, v_level2s, v_opps, vRs = L.get_icosahedron_vertices()
+                K_points_numpy = vs * 0.66 * self.radius
+                K_points_numpy = np.concatenate([K_points_numpy, np.array([[0,0,0]], dtype=K_points_numpy.dtype)], axis=0)    # 13*3
     
+            elif self.kanchor * self.quotient_factor == 12:
+                vertices, v_adjs, vRs, ecs, face_normals = L.get_tetrahedron_vertices()
+                # print(f"S2Conv vertices, {vertices.shape}")
+                # print(f"S2Conv ecs, {ecs.shape}")
+                # print(f"S2Conv face_normals, {face_normals.shape}")
+                vts = np.concatenate([vertices, ecs, face_normals], axis=0)     # (4+6+4),3
+                # vts = np.concatenate([vertices, face_normals], axis=0)     # (4+6+4),3
+                kernels = vts * 0.7 * self.radius
+                kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 15,3
+                # print(f"S2Conv kernels, {kernels.shape}")
+            else:
+                raise NotImplementedError
+
         # ### can print the kernel points coordinates
         # print('K_points_numpy', K_points_numpy)
         # nk*3
@@ -136,28 +168,38 @@ class KPConvInterSO3(nn.Module):
     def init_anchors(self):
         # get so3 anchors (60x3x3 rotation matrices)
         if self.quotient_factor == 1:
-            if self.kanchor < 10:
+            if self.fixed_kernel_points == 'verticals':
                 ### EPN mode for SO(2)
-                anchors = L.get_anchors(self.kanchor)
+                anchors = L.anchors_z(self.kanchor)
             else:
-                ### EPN mode for SO(3)
-                assert self.kanchor == 60, self.kanchor
-                anchors = L.get_anchorsV()
+                if self.kanchor == 60:
+                    ### EPN mode for SO(3)
+                    anchors = L.get_anchorsV()
+                elif self.kanchor == 12:
+                    anchors = L.get_anchorsV(tetra=True)
+                else:
+                    raise NotImplementedError
         else:
-            if self.kanchor < 10:
+            if self.fixed_kernel_points == 'verticals':
                 ### E2PN mode for SO(2)
-                anchors = L.get_anchors(self.kanchor * self.quotient_factor)[:self.kanchor]
-                quotient_anchors = L.get_anchors(self.quotient_factor)
+                anchors = L.anchors_z(self.kanchor * self.quotient_factor)[:self.kanchor]
+                quotient_anchors = L.anchors_z(self.quotient_factor)
                 self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
                             requires_grad=False)
             else:
-                ### E2PN mode for SO(3)
-                assert self.kanchor == 12, self.kanchor
-                assert self.quotient_factor == 5, self.quotient_factor
-                anchors = L.get_anchorsV().reshape(12, 5, 3, 3)[:, 0]
-                quotient_anchors = L.get_anchors(self.quotient_factor)
-                self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
-                            requires_grad=False)
+                if self.kanchor == 12:
+                    ### E2PN mode for SO(3)
+                    assert self.quotient_factor == 5, self.quotient_factor
+                    anchors = L.get_anchorsV12()
+                    quotient_anchors = L.anchors_z(self.quotient_factor)
+                    self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
+                                requires_grad=False)
+                elif self.kanchor == 4:
+                    assert self.quotient_factor == 3, self.quotient_factor
+                    anchors = L.get_anchorsV12(tetra=True)
+                    quotient_anchors = L.anchors_z(self.quotient_factor)
+                    self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
+                                requires_grad=False)
 
         return nn.Parameter(torch.tensor(anchors, dtype=torch.float32),
                          requires_grad=False)
