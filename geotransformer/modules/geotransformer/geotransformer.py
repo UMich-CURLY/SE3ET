@@ -188,14 +188,14 @@ class GeometricTransformer(nn.Module):
         Args:
             ref_points (Tensor): (B, N, 3)
             src_points (Tensor): (B, M, 3)
-            ref_feats (Tensor): (B, N, C), equivariant version: (B, A, N, C)
-            src_feats (Tensor): (B, M, C), equivariant version: (B, A, M, C)
+            ref_feats (Tensor): (B, N, [A], C)
+            src_feats (Tensor): (B, M, [A], C)
             ref_masks (Optional[BoolTensor]): (B, N)
             src_masks (Optional[BoolTensor]): (B, M)
 
         Returns:
-            ref_feats: torch.Tensor (B, N, C), equivariant version: (B, A, N, C)
-            src_feats: torch.Tensor (B, M, C), equivariant version: (B, A, N, C)
+            ref_feats: torch.Tensor (B, N, C)
+            src_feats: torch.Tensor (B, M, C)
         """
         if self.n_level_equiv == 0:
             ref_embeddings = self.embedding(ref_points)
@@ -223,11 +223,19 @@ class GeometricTransformer(nn.Module):
             src_feats = self.out_proj(src_feats)
         else:
             # Use equivairant features from E2PN and geometric embeddings
+            ref_feats = torch.transpose(ref_feats, 1, 2) # B, N, A, C -> B, A, N, C
+            src_feats = torch.transpose(src_feats, 1, 2)
+            ref_feats = self.in_proj(ref_feats)
+            src_feats = self.in_proj(src_feats)
+
             ref_feats, src_feats = self.transformer(
                 ref_feats,
                 src_feats,
                 ref_embeddings,
                 src_embeddings,
             )
+
+            ref_feats = self.out_proj(ref_feats) # B, N, C
+            src_feats = self.out_proj(src_feats)
 
         return ref_feats, src_feats

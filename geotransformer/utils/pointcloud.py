@@ -125,6 +125,15 @@ def random_sample_rotation_v2() -> np.ndarray:
     return rotation
 
 
+def random_sample_z_rotation() -> np.ndarray:
+    axis = np.random.rand(1) - 0.5
+    axis = axis / np.linalg.norm(axis) + 1e-8
+    theta = np.pi * np.random.rand()
+    euler = axis * theta
+    rotation = Rotation.from_euler('z', euler[0]).as_matrix()
+    return rotation
+
+
 def random_sample_transform(rotation_magnitude: float, translation_magnitude: float) -> np.ndarray:
     euler = np.random.rand(3) * np.pi * rotation_magnitude / 180.0  # (0, rot_mag)
     rotation = Rotation.from_euler('zyx', euler).as_matrix()

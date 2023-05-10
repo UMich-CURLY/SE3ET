@@ -10,6 +10,7 @@ import torch.utils.data
 from geotransformer.utils.pointcloud import (
     random_sample_rotation,
     random_sample_rotation_v2,
+    random_sample_z_rotation,
     get_transform_from_rotation_translation,
 )
 from geotransformer.utils.registration import get_correspondences
@@ -28,6 +29,7 @@ class ThreeDMatchPairDataset(torch.utils.data.Dataset):
         return_corr_indices=False,
         matching_radius=None,
         rotated=False,
+        z_rotated=False,
     ):
         super(ThreeDMatchPairDataset, self).__init__()
 
@@ -39,6 +41,7 @@ class ThreeDMatchPairDataset(torch.utils.data.Dataset):
         self.point_limit = point_limit
         self.overlap_threshold = overlap_threshold
         self.rotated = rotated
+        self.z_rotated = z_rotated
 
         self.return_corr_indices = return_corr_indices
         self.matching_radius = matching_radius
@@ -132,6 +135,17 @@ class ThreeDMatchPairDataset(torch.utils.data.Dataset):
             src_rotation = random_sample_rotation_v2()
             src_points = np.matmul(src_points, src_rotation.T)
             rotation = np.matmul(rotation, src_rotation.T)
+        
+        if self.z_rotated:
+            ref_rotation = random_sample_z_rotation()
+            ref_points = np.matmul(ref_points, ref_rotation.T)
+            rotation = np.matmul(ref_rotation, rotation)
+            translation = np.matmul(ref_rotation, translation)
+
+            src_rotation = random_sample_z_rotation()
+            src_points = np.matmul(src_points, src_rotation.T)
+            rotation = np.matmul(rotation, src_rotation.T)
+
 
         transform = get_transform_from_rotation_translation(rotation, translation)
 

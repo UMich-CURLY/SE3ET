@@ -574,7 +574,7 @@ class BatchNormBlockEPN(nn.Module):
 
 class UnaryBlockEPN(nn.Module):
     
-    def __init__(self, in_dim, out_dim, group_norm, use_bn, bn_momentum, no_relu=False):
+    def __init__(self, in_dim, out_dim, group_norm, bn_momentum, no_relu=False):
         """
         Initialize a standard unary block with its ReLU and BatchNorm.
         :param in_dim: dimension input features
@@ -585,20 +585,16 @@ class UnaryBlockEPN(nn.Module):
 
         super(UnaryBlockEPN, self).__init__()
         self.bn_momentum = bn_momentum
-        self.use_bn = use_bn
         self.no_relu = no_relu
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.mlp = nn.Linear(in_dim, out_dim) #, bias=False)
         
-        # self.batch_norm = BatchNormBlockEPN(out_dim, self.use_bn, self.bn_momentum)
         self.norm = GroupNormEPN(group_norm, out_dim)
         self.leaky_relu = nn.LeakyReLU(0.1)
 
     def forward(self, x, batch=None):
-        np, na, nc = x.shape
-        x = self.mlp(x) #.reshape(np, na, self.out_dim)
-        # x = self.batch_norm(x)
+        x = self.mlp(x)
         x = self.norm(x)
         if not self.no_relu:
             x = self.leaky_relu(x)
@@ -740,7 +736,6 @@ class ResnetBottleneckBlockEPN(nn.Module):
         super().__init__()
         
         self.bn_momentum = config.batch_norm_momentum
-        self.use_bn = config.use_batch_norm
         self.block_name = block_name
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -750,7 +745,7 @@ class ResnetBottleneckBlockEPN(nn.Module):
 
         # First downscaling mlp
         if in_dim != out_dim // 4:
-            self.unary1 = UnaryBlockEPN(in_dim, out_dim // 4, group_norm, self.use_bn, self.bn_momentum)
+            self.unary1 = UnaryBlockEPN(in_dim, out_dim // 4, group_norm, self.bn_momentum)
         else:
             self.unary1 = nn.Identity()
 
@@ -762,11 +757,11 @@ class ResnetBottleneckBlockEPN(nn.Module):
         self.norm = GroupNormEPN(group_norm, out_dim // 4)
         
         # Second upscaling mlp
-        self.unary2 = UnaryBlockEPN(out_dim // 4, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+        self.unary2 = UnaryBlockEPN(out_dim // 4, out_dim, group_norm, self.bn_momentum, no_relu=self.relu_end)
         
         # Shortcut optional mpl
         if in_dim != out_dim:
-            self.skip_conv = UnaryBlockEPN(in_dim, out_dim, group_norm, self.use_bn, self.bn_momentum, no_relu=self.relu_end)
+            self.skip_conv = UnaryBlockEPN(in_dim, out_dim, group_norm, self.bn_momentum, no_relu=self.relu_end)
         else:
             self.skip_conv = nn.Identity()
             # NOTE: no_relu is diff from Predator
@@ -846,7 +841,7 @@ class InvOutBlockEPN(nn.Module):
         return Parameter(torch.tensor(anchors, dtype=torch.float32),
                          requires_grad=False)
 
-    def forward(self, x, q_pts, s_pts, neighb_inds):
+    def forward(self, x, q_pts=None, s_pts=None, neighb_inds=None):
         ### x: pac -> pc
         np, na, nc = x.shape                # p,a,c
         if self.att_pooling or self.att_permute:

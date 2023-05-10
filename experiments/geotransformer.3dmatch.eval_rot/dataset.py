@@ -1,6 +1,4 @@
 from geotransformer.datasets.registration.threedmatch.dataset import ThreeDMatchPairDataset
-from geotransformer.datasets.registration.threedmatch_small.dataset import ThreeDMatchPairSmallDataset
-# from geotransformer.datasets.registration.threedmatch_one.dataset import ThreeDMatchOnePairDataset
 from geotransformer.utils.data import (
     registration_collate_fn_stack_mode,
     calibrate_neighbors_stack_mode,
@@ -81,6 +79,10 @@ def test_data_loader(cfg, benchmark):
         benchmark,
         point_limit=cfg.test.point_limit,
         use_augmentation=False,
+        # use_augmentation=cfg.train.use_augmentation,
+        # augmentation_noise=cfg.train.augmentation_noise,
+        # augmentation_rotation=cfg.train.augmentation_rotation,
+        rotated=True,
     )
     test_loader = build_dataloader_stack_mode(
         test_dataset,
