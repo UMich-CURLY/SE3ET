@@ -47,7 +47,7 @@ _C.train.augmentation_rotation = 1.0
 _C.test = edict()
 _C.test.batch_size = 1
 _C.test.num_workers = 8
-_C.test.point_limit = None
+_C.test.point_limit = 10000
 
 # evaluation
 _C.eval = edict()
@@ -180,7 +180,8 @@ _C.geotransformer.input_dim = 1024
 _C.geotransformer.hidden_dim = 256
 _C.geotransformer.output_dim = 256
 _C.geotransformer.num_heads = 4
-_C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
+# _C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
+_C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross']
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3

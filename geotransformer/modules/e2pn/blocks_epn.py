@@ -153,7 +153,7 @@ class KPConvInterSO3(nn.Module):
                 vts = np.concatenate([vertices, ecs, face_normals], axis=0)     # (4+6+4),3
                 # vts = np.concatenate([vertices, face_normals], axis=0)     # (4+6+4),3
                 kernels = vts * 0.7 * self.radius
-                kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 15,3
+                K_points_numpy = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 15,3
                 # print(f"S2Conv kernels, {kernels.shape}")
             else:
                 raise NotImplementedError
@@ -252,8 +252,10 @@ class KPConvInterSO3(nn.Module):
         else:
             self.register_buffer('kidx_ori', kidx_ori.transpose(0,1))   # k1, a
             # self.register_buffer('kidx_rot', kidx_rot.transpose(0,1))   # k2, a
-        assert torch.max(kres_ori) < 1e-3, f"{torch.max(kres_ori)}, self.equiv_mode_kp={self.equiv_mode_kp}, self.kernel_points=\n{self.kernel_points}, \nkres_ori=\n{kres_ori}"
-        assert torch.max(kres_rot) < 1e-3, f"{torch.max(kres_rot)}, \n{self.kernel_points}"
+        # assert torch.max(kres_ori) < 1e-3, f"{torch.max(kres_ori)}, self.equiv_mode_kp={self.equiv_mode_kp}, self.kernel_points=\n{self.kernel_points}, \nkres_ori=\n{kres_ori}"
+        # assert torch.max(kres_rot) < 1e-3, f"{torch.max(kres_rot)}, \n{self.kernel_points}"
+        assert torch.max(kres_ori) < 5e-3*self.radius, f"self.radius={self.radius}, {torch.max(kres_ori)}, self.equiv_mode_kp={self.equiv_mode_kp}, self.kernel_points=\n{self.kernel_points}, \nkres_ori=\n{kres_ori}"
+        assert torch.max(kres_rot) < 5e-3*self.radius, f"self.radius={self.radius}, {torch.max(kres_rot)}, \n{self.kernel_points}"
         return
 
     def init_permute_idxs_rots(self):
