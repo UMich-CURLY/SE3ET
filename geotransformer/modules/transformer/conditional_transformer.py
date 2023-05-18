@@ -101,6 +101,7 @@ class RPEConditionalTransformer(nn.Module):
         dropout=None,
         activation_fn='ReLU',
         return_attention_scores=False,
+        return_attention_weights=False,
         parallel=False,
         na=4,
         align_mode='0',
@@ -126,6 +127,7 @@ class RPEConditionalTransformer(nn.Module):
         if 'cross_r_soft' in self.blocks or 'cross_r_best' in self.blocks:
             self.rotcompress = RotCompressOutput(d_model, dropout=dropout, activation_fn=activation_fn, na=na, dual_align=align_mode=='dual_early')
         self.return_attention_scores = return_attention_scores
+        self.return_attention_weights = return_attention_weights
         self.parallel = parallel
 
     def eq2inv_best(self, feats0, feats1, attn_w0, attn_w1, current_layer):
@@ -204,6 +206,8 @@ class RPEConditionalTransformer(nn.Module):
 
     def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, equiv_embed0=None, equiv_embed1=None):
         attention_scores = []
+        attn_w0 = None
+        attn_w1 = None
         for i, block in enumerate(self.blocks):
             if 'self' in block:
                 feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
@@ -231,6 +235,8 @@ class RPEConditionalTransformer(nn.Module):
                 attention_scores.append([scores0, scores1])
         if self.return_attention_scores:
             return feats0, feats1, attention_scores#, v_permute0, v_permute1
+        elif self.return_attention_weights:
+            return feats0, feats1, attn_w0, attn_w1
         else:
             return feats0, feats1#, v_permute0, v_permute1
 

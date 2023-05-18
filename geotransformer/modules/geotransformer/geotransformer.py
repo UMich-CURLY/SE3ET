@@ -132,6 +132,7 @@ class GeometricTransformer(nn.Module):
         angle_k,
         dropout=None,
         activation_fn='ReLU',
+        supervise_rotation=False,
         reduction_a='max',
         na=None,
         align_mode='0',
@@ -159,19 +160,32 @@ class GeometricTransformer(nn.Module):
 
         self.in_proj = nn.Linear(input_dim, hidden_dim)
         self.na = na
+        self.supervise_rotation = supervise_rotation
         if self.na is None:
+            # transformer in GeoTransformer
             self.transformer = RPEConditionalTransformer(
                 blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn
             )
         else:
-            # transformer that handle equivariant features
-            self.transformer = RPEConditionalTransformer(
-                blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
-                na=na,
-                align_mode=align_mode,
-                alternative_impl=alternative_impl,
-                d_equiv_embed=self.d_equiv_embed,
-            )
+            if self.supervise_rotation:
+                # transformer that handle equivariant features and return attention weight for rotation supervision
+                self.transformer = RPEConditionalTransformer(
+                    blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
+                    return_attention_weights=True,
+                    na=na,
+                    align_mode=align_mode,
+                    alternative_impl=alternative_impl,
+                    d_equiv_embed=self.d_equiv_embed,
+                )
+            else:
+                # transformer that handle equivariant features
+                self.transformer = RPEConditionalTransformer(
+                    blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
+                    na=na,
+                    align_mode=align_mode,
+                    alternative_impl=alternative_impl,
+                    d_equiv_embed=self.d_equiv_embed,
+                )
         self.out_proj = nn.Linear(hidden_dim, output_dim)
 
     def forward(
@@ -228,14 +242,33 @@ class GeometricTransformer(nn.Module):
             ref_feats = self.in_proj(ref_feats)
             src_feats = self.in_proj(src_feats)
 
-            ref_feats, src_feats = self.transformer(
-                ref_feats,
-                src_feats,
-                ref_embeddings,
-                src_embeddings,
-            )
+            if self.supervise_rotation:
+                ref_feats, src_feats, ref_attn_w, src_attn_w = self.transformer(
+                    ref_feats,
+                    src_feats,
+                    ref_embeddings,
+                    src_embeddings,
+                    masks0=ref_masks,
+                    masks1=src_masks,
+                    equiv_embed0=ref_eq_embeddings,
+                    equiv_embed1=src_eq_embeddings,
+                )
+            else:
+                ref_feats, src_feats = self.transformer(
+                    ref_feats,
+                    src_feats,
+                    ref_embeddings,
+                    src_embeddings,
+                    masks0=ref_masks,
+                    masks1=src_masks,
+                    equiv_embed0=ref_eq_embeddings,
+                    equiv_embed1=src_eq_embeddings,
+                )
 
             ref_feats = self.out_proj(ref_feats) # B, N, C
             src_feats = self.out_proj(src_feats)
-
-        return ref_feats, src_feats
+        
+        if self.supervise_rotation:
+            return ref_feats, src_feats, ref_attn_w, src_attn_w
+        else:
+            return ref_feats, src_feats, None, None

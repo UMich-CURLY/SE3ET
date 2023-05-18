@@ -40,11 +40,12 @@ class GeoTransformer(nn.Module):
             cfg.geotransformer.sigma_d,
             cfg.geotransformer.sigma_a,
             cfg.geotransformer.angle_k,
+            supervise_rotation=cfg.geotransformer.supervise_rotation,
             reduction_a=cfg.geotransformer.reduction_a,
             na=cfg.epn.kanchor,
-            align_mode='dual_late',
-            alternative_impl=False,
-            n_level_equiv=0,
+            align_mode=cfg.geotransformer.align_mode,
+            alternative_impl=cfg.geotransformer.alternative_impl,
+            n_level_equiv=cfg.geotransformer.n_level_equiv,
         )
 
         self.coarse_target = SuperPointTargetGenerator(
@@ -135,12 +136,16 @@ class GeoTransformer(nn.Module):
         # 3. Conditional Transformer
         ref_feats_c = feats_c[:ref_length_c] # N, A, C=1024
         src_feats_c = feats_c[ref_length_c:]
-        ref_feats_c, src_feats_c = self.transformer(
+        ref_feats_c, src_feats_c, ref_attn_w, src_attn_w = self.transformer(
             ref_points_c.unsqueeze(0),
             src_points_c.unsqueeze(0),
             ref_feats_c.unsqueeze(0),
             src_feats_c.unsqueeze(0),
         ) # B, N/M, C=256
+
+        output_dict['ref_attn_w'] = ref_attn_w
+        output_dict['src_attn_w'] = src_attn_w
+
         ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1)
         src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1)
 
