@@ -243,7 +243,7 @@ class GeometricTransformer(nn.Module):
             src_feats = self.in_proj(src_feats)
 
             if self.supervise_rotation:
-                ref_feats, src_feats, ref_attn_w, src_attn_w = self.transformer(
+                ref_feats, src_feats, attn_matrix0, attn_matrix1 = self.transformer(
                     ref_feats,
                     src_feats,
                     ref_embeddings,
@@ -269,6 +269,6 @@ class GeometricTransformer(nn.Module):
             src_feats = self.out_proj(src_feats)
         
         if self.supervise_rotation:
-            return ref_feats, src_feats, ref_attn_w, src_attn_w
+            return ref_feats, src_feats, attn_matrix0, attn_matrix1
         else:
             return ref_feats, src_feats, None, None

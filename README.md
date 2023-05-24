@@ -16,7 +16,6 @@ Build docker environment
 cd docker
 docker build --tag umcurly/geotransformer .
 bash build_docker_container.bash [container_name]
-cd ..
 ```
 Build extension package for GeoTransformer (might need root access)
 ```

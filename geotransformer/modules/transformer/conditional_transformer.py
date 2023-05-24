@@ -206,8 +206,8 @@ class RPEConditionalTransformer(nn.Module):
 
     def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, equiv_embed0=None, equiv_embed1=None):
         attention_scores = []
-        attn_w0 = None
-        attn_w1 = None
+        attn_matrix0 = None
+        attn_matrix1 = None
         for i, block in enumerate(self.blocks):
             if 'self' in block:
                 feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
@@ -231,12 +231,15 @@ class RPEConditionalTransformer(nn.Module):
                             feats0, feats1 = self.eq2inv_best(feats0, feats1, attn_w0, attn_w1, self.layers[i])
                         else:
                             feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
+                elif 'a_soft' in block:
+                    scores0, attn_matrix0 = scores0
+                    scores1, attn_matrix1 = scores1
             if self.return_attention_scores:
                 attention_scores.append([scores0, scores1])
         if self.return_attention_scores:
             return feats0, feats1, attention_scores#, v_permute0, v_permute1
         elif self.return_attention_weights:
-            return feats0, feats1, attn_w0, attn_w1
+            return feats0, feats1, attn_matrix0, attn_matrix1
         else:
             return feats0, feats1#, v_permute0, v_permute1
 

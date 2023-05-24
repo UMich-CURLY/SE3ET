@@ -161,18 +161,46 @@ class MultiHeadAttentionEQ(nn.Module):
             self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
             self.nr = trace_idx_ori.shape[0]
             self.na = trace_idx_ori.shape[1]
+            """
+            trace_idx_ori
+            [[0 1 2 3]                                                                                            
+            [0 2 3 1]                                                                                             
+            [0 3 1 2]                                                                                             
+            [1 2 0 3]
+            [1 0 3 2]
+            [1 3 2 0]
+            [2 3 0 1]
+            [2 0 1 3]
+            [2 1 3 0]
+            [3 1 0 2]
+            [3 0 2 1]
+            [3 2 1 0]]
+            trace_idx_rot
+            [[0 1 2 3]
+            [0 3 1 2]
+            [0 2 3 1]
+            [2 0 1 3]
+            [1 0 3 2]
+            [3 0 2 1]
+            [2 3 0 1]
+            [1 2 0 3]
+            [3 1 0 2]
+            [2 1 3 0]
+            [1 3 2 0]
+            [3 2 1 0]]
+            """
         elif self.kanchor == 3:            
             self.anchors = nn.Parameter(torch.tensor(L.get_anchors(self.kanchor), dtype=torch.float32), requires_grad=False)
             trace_idx_ori, trace_idx_rot = fr.get_relativeR_index(self.anchors)  
             trace_idx_rot = trace_idx_rot.transpose(0,1)
-            # trace_idx_ori                                                                                          
-            # [[0 1 2]                                                                                              
-            # [1 2 0]                                                                                               
-            # [2 0 1]]                                                                                              
-            # trace_idx_rot                                                                                          
-            # [[0 2 1]                                                                                              
-            # [1 0 2]                                                                                               
-            # [2 1 0]]    
+            # trace_idx_ori
+            # [[0 1 2]
+            # [1 2 0]
+            # [2 0 1]]
+            # trace_idx_rot
+            # [[0 2 1]
+            # [1 0 2]
+            # [2 1 0]]
             self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
             self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
             self.nr = trace_idx_ori.shape[0]
@@ -205,7 +233,7 @@ class MultiHeadAttentionEQ(nn.Module):
                                 / self.d_model_per_head ** 0.5
         
         if self.attn_mode is None:
-            return attention_scores_ae, None
+            return attention_scores_ae, None, None
 
         attention_scores_ae_raw = attention_scores_ae   # local attention
         # attention_scores_ae = torch.sigmoid(attention_scores_ae)   # 0-1
@@ -630,7 +658,7 @@ class MultiHeadAttentionEQ(nn.Module):
         if self.attn_mode in ['a_best', 'r_best']:
             return hidden_states, [attention_scores, attn_idx]
         else:
-            return hidden_states, [attention_scores, attn_w]    # , v_permute
+            return hidden_states, [attention_scores, attn_w]
 
 class AttentionLayer(nn.Module):
     def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4):

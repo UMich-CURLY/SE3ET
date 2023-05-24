@@ -793,11 +793,14 @@ def label_relative_rotation_np(anchors, T):
 
 def label_relative_rotation_simple(anchors, T):
     """Find the anchor rotation that is closest to the queried rotation. 
+    input:
+    anchors: 12*3*3
+    T: 3*3
     return: 
     R_target: [3,3], T = R_target * anchors[label]
     label: int"""
-    T_then_anchors = np.einsum('ij,akj->aik', T, anchors)
-    label = np.argmax(np.einsum('aii->a', T_then_anchors),axis=0)
+    T_then_anchors = torch.einsum('ij,akj->aik', T, anchors)
+    label = torch.argmax(torch.einsum('aii->a', T_then_anchors), dim=0)
     R_target = T_then_anchors[label.item()]
     # return: [3,3], int
     return R_target, label
