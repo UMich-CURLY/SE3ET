@@ -223,17 +223,18 @@ class RPEConditionalTransformer(nn.Module):
                     feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1)
                     feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0)
                 if 'r_soft' in block or 'r_best' in block:
-                    scores0, attn_w0 = scores0  # , v_permute1
-                    scores1, attn_w1 = scores1  # , v_permute0
+                    if 'r_soft' in block:
+                        scores0, attn_w0, attn_matrix0 = scores0
+                        scores1, attn_w1, attn_matrix1 = scores1
+                    else:
+                        scores0, attn_w0 = scores0  # , v_permute1
+                        scores1, attn_w1 = scores1  # , v_permute0
                     if i+1 < len(self.blocks) and not _check_block_eq(self.blocks[i+1]):
                         ### if the next block is not equivariant, need to pool to invariant features
                         if 'r_best' in block:
                             feats0, feats1 = self.eq2inv_best(feats0, feats1, attn_w0, attn_w1, self.layers[i])
                         else:
                             feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
-                elif 'a_soft' in block:
-                    scores0, attn_matrix0 = scores0
-                    scores1, attn_matrix1 = scores1
             if self.return_attention_scores:
                 attention_scores.append([scores0, scores1])
         if self.return_attention_scores:

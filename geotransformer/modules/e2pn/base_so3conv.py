@@ -313,7 +313,7 @@ class BasicSO3ConvBlock(nn.Module):
             else:
                 raise ValueError(f'No such type of SO3Conv {param["type"]}')
 
-        return x, sample_idx
+        return x #, sample_idx
 
     def get_anchor(self):
         if self.params[-1]['args']['kanchor'] == 12:

@@ -378,7 +378,7 @@ class MultiHeadAttentionEQ(nn.Module):
                     attention_scores = attention_scores_ae_raw.flatten(0,2)[idx]   # baehnm -> barhnm
                     attention_scores = attention_scores.transpose(1,2)             # brahnm
 
-            return attention_scores, attn_r
+            return attention_scores, [attn_r, attn_ae]
             ### attention_scores: local attention matrix; attn_ae: global rotation attention matrix
         elif self.attn_mode == 'r_best':
             ### pick the optimal rotation in key and permute key anchors accordingly
@@ -600,7 +600,7 @@ class MultiHeadAttentionEQ(nn.Module):
                 attention_scores = attention_scores.masked_fill(key_masks.unsqueeze(1).unsqueeze(1).unsqueeze(1).unsqueeze(1), float('-inf'))
             if attention_masks is not None:
                 attention_scores = attention_scores.masked_fill(attention_masks, float('-inf'))
-
+               
 
         ### normalize the local attention over the points in key
         attention_scores = F.softmax(attention_scores, dim=-1)
@@ -632,6 +632,7 @@ class MultiHeadAttentionEQ(nn.Module):
             hidden_states = torch.einsum('bahnm,bahmc->bahnc', attention_scores, v_permute)
         elif self.attn_mode == 'r_soft':
             ### brahnm, brahnm, behmc
+            attn_w, attn_matrix = attn_w
             attention_scores = attention_scores * attn_w
             v_permute = v[:, self.trace_idx_ori]    # brahmc
             # print('v_permute_0000', v_permute[..., 0,0,0,0])
@@ -657,6 +658,8 @@ class MultiHeadAttentionEQ(nn.Module):
 
         if self.attn_mode in ['a_best', 'r_best']:
             return hidden_states, [attention_scores, attn_idx]
+        elif self.attn_mode in ['r_soft']:
+            return hidden_states, [attention_scores, attn_w, attn_matrix]
         else:
             return hidden_states, [attention_scores, attn_w]
 

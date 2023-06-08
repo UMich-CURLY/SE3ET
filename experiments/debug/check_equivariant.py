@@ -8,6 +8,7 @@ import torch.nn as nn
 import open3d as o3d
 from geotransformer.modules.e2pn.base_so3conv import preprocess_input, BasicSO3ConvBlock
 from geotransformer.modules.e2pn.vgtk.vgtk.so3conv import get_anchorsV, get_anchors, get_icosahedron_vertices, get_tetrahedron_vertices
+import geotransformer.modules.transformer.utils_epn.anchors as L
 
 from config import make_cfg
 cfg = make_cfg()
@@ -19,8 +20,8 @@ class SO3ConvModel(nn.Module):
     def __init__(self, mlps=[[32]], strides=[1, 1, 1, 1]):
         super(SO3ConvModel, self).__init__()
 
-        mlps=[[32], [64]]
-        strides=[2, 2, 1, 1]
+        mlps=[[32]]
+        strides=[1, 1, 1, 1]
         initial_radius_ratio = 0.2
         sampling_ratio = 0.8
         sampling_density = 0.4
@@ -30,7 +31,7 @@ class SO3ConvModel(nn.Module):
         xyz_pooling = None
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        input_num = cfg.num_points 
+        input_num = 4096 #cfg.num_points 
         dropout_rate = 0
         temperature = 3
         so3_pooling = 'attention'
@@ -104,6 +105,8 @@ class SO3ConvModel(nn.Module):
                 elif na == 12:
                     block_type = 'separable_s2_block'
                 elif na == 4:
+                    block_type = 'separable_s2_block'
+                elif na == 6:
                     block_type = 'separable_s2_block'
                 elif na < 60:
                     block_type = 'inter_block'
@@ -214,6 +217,7 @@ if __name__ == '__main__':
     s2_coordinate, _, _, _, _ = get_icosahedron_vertices()
     s2_coordinate = torch.Tensor(s2_coordinate)
     s2_tetra, _, rot_tetra, _, _ = get_tetrahedron_vertices()
+    s2_octa, _, rot_octa, _, _ = L.get_octahedron_vertices()
     print('Check that two sets of rotation anchors are not equal:')
     rot_diff_acos_max, rot_diff_acos_max_idx = find_rotation_correspondence(rot_anchors_face, rot_anchors_vtx)
 
@@ -227,6 +231,8 @@ if __name__ == '__main__':
         rot_anchors = rot_anchors_face
     elif cfg.epn.kanchor == 12:
         rot_anchors = rot_anchors_vtx
+    elif cfg.epn.kanchor == 6:
+        rot_anchors = rot_octa
     elif cfg.epn.kanchor == 4:
         rot_anchors = rot_tetra
     elif cfg.epn.kanchor == 3:
@@ -245,6 +251,8 @@ if __name__ == '__main__':
     else:
         # rotate 120 degree along x axis for kanchor = 60
         # rotate 72 degree along z axis for kanchor = 12
+        # rotate 90 degree along z axis for kanchor = 6
+        # rotate 120 degree along z axis for kanchor = 4
         # rotate 120 degree along z axis for kanchor = 3
         print('Load rotation manually')
         if cfg.epn.kanchor == 60:
@@ -254,6 +262,11 @@ if __name__ == '__main__':
                                             [0, torch.sin(theta_1), torch.cos(theta_1)],])
         elif cfg.epn.kanchor == 12:
             theta_1 = torch.Tensor([2 * torch.pi / 5])
+            rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
+                                            [torch.sin(theta_1), torch.cos(theta_1), 0],
+                                            [0, 0, 1]])
+        elif cfg.epn.kanchor == 6:
+            theta_1 = torch.Tensor([2 * torch.pi / 4])
             rotation_matrix_1 = torch.Tensor([[torch.cos(theta_1), -torch.sin(theta_1), 0],
                                             [torch.sin(theta_1), torch.cos(theta_1), 0],
                                             [0, 0, 1]])
@@ -279,6 +292,11 @@ if __name__ == '__main__':
         pts_after_rotations = rotation_matrix_1 @ s2_coordinate.T
         pts_after_rotations = pts_after_rotations.T
         best_align_value, best_align_idx = find_point_correspondence(pts_after_rotations, s2_coordinate)
+    elif cfg.epn.kanchor == 6:
+        ### anchors are vertices in S^2
+        pts_after_rotations = rotation_matrix_1 @ s2_octa.T
+        pts_after_rotations = pts_after_rotations.T
+        best_align_value, best_align_idx = find_point_correspondence(pts_after_rotations, s2_octa)
     elif cfg.epn.kanchor == 4:
         ### anchors are vertices in S^2
         pts_after_rotations = rotation_matrix_1 @ s2_tetra.T
@@ -342,9 +360,11 @@ if __name__ == '__main__':
         similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats[:, :, anchor_i])
         # print('after alignment: similarity_one_layer_%d_%d'%(anchor_i, best_align_idx[anchor_i]))
         aligned_similarity = cosine_similarity(oxford_one_layer_feats[:, :, anchor_i], rotated_oxford_one_layer_feats_remapped[:, :, anchor_i])
-        if aligned_similarity == 1:
-            print("equivariant at anchor %d"%anchor_i)
-        else:
-            print("not equivariant at anchor %d"%anchor_i)
+        print('anchor %d: similarity before alignment: %.4f, similarity after alignment: %.4f'%(anchor_i, similarity, aligned_similarity))
+        
+        # if aligned_similarity == 1:
+        #     print("equivariant at anchor %d"%anchor_i)
+        # else:
+        #     print("not equivariant at anchor %d"%anchor_i)
 
     

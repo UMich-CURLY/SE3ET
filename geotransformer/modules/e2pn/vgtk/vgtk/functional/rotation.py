@@ -168,7 +168,92 @@ def get_adjmatrix_trimesh(mesh, gsize=None):
         R_adj = np.concatenate([R_adj, rp], axis=1)
         return R_adj
 
-def get_so3_from_anchors_np_zyz(face_normals, gsize=3, tetra=False):
+def get_so3_from_anchors_octa(vertices, gsize=4, octa=False):
+    """
+    This function is used to get the rotation matrices from the vertices of the octahedron.
+    :param vertices: (na, 3) ndarray, xyz coordinates of the vertices
+    :param gsize: int, the quotient factor
+    :param octa: bool, whether to use the octahedron
+    :return: Rs: (na*gsize, 3, 3) ndarray, rotation matrices for each vertices and each edge
+
+    The rotation matrix follows xyz convention in http://mathworld.wolfram.com/EulerAngles.html
+    R = Rz(gamma) * Ry(beta) * Rx(alpha)
+    alpha is the rotation angle around x-axis, beta is the rotation angle around y-axis.
+    After Rx and Ry, the origin-vertex direction is the z-axis, 
+    then gamma is the rotation angle around z-axis to generate rotation matrices along the edges of each vertices.
+    """
+    # number of anchor, na=6 for octahedron
+    na = vertices.shape[0]
+
+    # angles are hard coded for the octahedron here
+    # alpha = [0, 0, pi/2, 0, 3*pi/2, pi]
+    # calpha = [1, 1, 0, 1,  0, -1]
+    # salpha = [0, 0, 1, 0, -1,  0]
+    calpha = np.ones_like((vertices[...,-1])) # [1, 1, 1, 1, 1, 1]
+    calpha[vertices[...,1] != 0] = 0 # [1, 1, 0, 1, 0, 1]
+    calpha[vertices[...,-1] < 0] = -1 # [1, 1, 0, 1, 0, -1]
+    salpha = vertices[...,1] # [0, 0, 1, 0, -1, 0]
+
+    # beta = [0, 3*pi/2, 0, pi/2, 0, 0]
+    # cbeta = [1,  0, 1, 0, 1, 1]
+    # sbeta = [0, -1, 0, 1, 0, 0]
+    sbeta = -1 * vertices[...,0] # [0, -1, 0, 1, 0, 0]
+    cbeta = (1 - sbeta**2)**0.5 # [1, 0, 1, 0, 1, 1]
+
+    # gamma
+    gamma = np.linspace(0, 2 * np.pi, gsize, endpoint=False, dtype=np.float32)
+    gamma = gamma[None].repeat(na, axis=0)
+
+    # Compute na rotation matrices Rx, Ry, Rz
+    Rz = np.zeros([na, gsize, 9], dtype=np.float32)
+    Ry = np.zeros([na, 9], dtype=np.float32)
+    Rx = np.zeros([na, 9], dtype=np.float32)
+
+    # see xyz convention in http://mathworld.wolfram.com/EulerAngles.html
+    # D matrix
+    Rz[:,:,0] = np.cos(gamma)
+    Rz[:,:,1] = -np.sin(gamma)
+    Rz[:,:,2] = 0
+    Rz[:,:,3] = np.sin(gamma)
+    Rz[:,:,4] = np.cos(gamma)
+    Rz[:,:,5] = 0
+    Rz[:,:,6] = 0
+    Rz[:,:,7] = 0
+    Rz[:,:,8] = 1
+
+    # C matrix
+    Ry[:,0] = cbeta
+    Ry[:,1] = 0
+    Ry[:,2] = sbeta
+    Ry[:,3] = 0
+    Ry[:,4] = 1
+    Ry[:,5] = 0
+    Ry[:,6] = -sbeta
+    Ry[:,7] = 0
+    Ry[:,8] = cbeta
+
+    # B Matrix
+    Rx[:,0] = 1
+    Rx[:,1] = 0
+    Rx[:,2] = 0
+    Rx[:,3] = 0
+    Rx[:,4] = calpha
+    Rx[:,5] = -salpha
+    Rx[:,6] = 0
+    Rx[:,7] = salpha
+    Rx[:,8] = calpha
+
+    Rz = Rz.reshape(na*gsize,3,3)
+    Ry = Ry[:,None].repeat(gsize,axis=1).reshape(na*gsize, 3,3)
+    Rx = Rx[:,None].repeat(gsize,axis=1).reshape(na*gsize, 3,3)
+
+    # R = BCD
+    Ryx = np.einsum('bij,bjh->bih', Ry, Rx)
+    Rs = np.einsum('bij,bjh->bih', Rz, Ryx)
+
+    return Rs
+
+def get_so3_from_anchors_np_zyz(face_normals, gsize=3, tetra=False, octa=False):
     # alpha, beta
     na = face_normals.shape[0]
     cbeta = face_normals[...,-1]
@@ -176,7 +261,7 @@ def get_so3_from_anchors_np_zyz(face_normals, gsize=3, tetra=False):
     calpha = face_normals[...,0] / sbeta
     salpha = face_normals[...,1] / sbeta
 
-    if gsize==5 or tetra:
+    if gsize==5 or tetra or octa:
         calpha = np.where(np.isnan(calpha) & (cbeta>0), np.ones_like(calpha), calpha)
         calpha = np.where(np.isnan(calpha) & (cbeta<0), -np.ones_like(calpha), calpha)
         salpha = np.where(np.isnan(salpha), np.zeros_like(salpha), salpha)
@@ -278,6 +363,8 @@ def get_so3_from_anchors_np_zyz(face_normals, gsize=3, tetra=False):
     z_val = (face_normals[:, -1])[:, None].repeat(gsize, axis=1).reshape(na*gsize, 1, 1)
     if tetra:
         Rs = Rs1*(z_val>=0)+Rs2*(z_val<0)
+    elif octa:
+        Rs = Rs1
     else:
         # import ipdb; ipdb.set_trace()
         if gsize == 3:
@@ -387,6 +474,47 @@ def get_so3_from_anchors_np(face_normals, gsize=3):
 #     Rs = sciR.from_quat(quat).as_matrix()
 
 #     return Rs
+
+def octahedron_trimesh_to_vertices():
+    vertices = np.array([[0, 0, 1],
+                         [1, 0, 0],
+                         [0, 1, 0],
+                         [-1, 0, 0],
+                         [0, -1, 0],                         
+                         [0, 0, -1]], dtype=np.float32) # 6 vertices
+    faces=np.array([[0,1,2], [0,2,3],[0,3,4], [0,4,1],
+                    [5,1,2], [5,2,3],[5,3,4], [5,4,1]],dtype=int) # 8 faces
+    mesh = trimesh.base.Trimesh(vertices,faces)
+    mesh.fix_normals()
+
+    # the 4 rotation matrices for each of the 6 vertices
+    Rs = get_so3_from_anchors_np_zyz(vertices, gsize=4, octa=True)
+    # Rs = get_so3_from_anchors_octa(vertices, gsize=4, octa=True)
+    # print('Rs', Rs.shape, '\n', Rs)
+
+    # the index of the connecting vertices (neighbors), and the next layer (opposite vertices) for each vertex
+    v_adjs = np.array([[1,2,3,4], [0,2,4,5], [0,1,3,5], [0,2,4,5], [0,1,3,5], [1,2,3,4]])
+    # the index of the opposite vertices for each vertex
+    v_opps = np.array([[5], [3], [4], [1], [2], [0]])
+
+    ### edge centers
+    edges = mesh.edges_unique  # (12,2)
+    ecs = []
+    for edge in edges:
+        v1 = vertices[edge[0]]
+        v2 = vertices[edge[1]]
+        ec = (v1+v2)*0.5
+        ecs.append(ec)
+    ecs = np.array(ecs, dtype=np.float32) # 12 edge centers
+    ecs_norms = np.linalg.norm(ecs, axis=1, keepdims=True)
+    ecs = ecs / ecs_norms
+    ecs = np.where(np.isnan(ecs), np.zeros_like(ecs), ecs)
+    
+    ### face centers
+    face_normals = mesh.face_normals # (8,3)
+    face_normals = np.array(face_normals, dtype=np.float32)
+
+    return vertices, v_adjs, v_opps, Rs, ecs, face_normals
 
 def tetrahedron_trimesh_to_vertices():
     vertices = np.array([[0,0,3], 

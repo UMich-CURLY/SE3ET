@@ -22,6 +22,8 @@ Rs, R_idx, canonical_relative = fr.icosahedron_so3_trimesh(ANCHOR_PATH, GAMMA_SI
 
 vs_tetra, v_adjs_tetra, vRs_tetra, ecs_tetra, face_normals_tetra = fr.tetrahedron_trimesh_to_vertices()
 
+vs_octa, v_adjs_octa, v_opps_octa, vRs_octa, ecs_octa, face_normals_octa = fr.octahedron_trimesh_to_vertices()
+
 def select_anchor(anchors, k):
     if k == 1:
         return anchors[29][None]
@@ -80,11 +82,21 @@ def get_anchorsV12(tetra=False):
     else:
         return vRs.reshape(12, 5, 3, 3)[:,0].copy()    # 12*3*3
 
+def get_anchorsV24():
+    """return 24*3*3 matrix as the section (representative rotation) of octahedron vertices. 
+    For each vertex on the sphere (octahedron) (coset space S2 = SO(3)/SO(2)), 
+    pick one rotation as its representation in SO(3), which is also called a section function (G/H -> G)"""
+    
+    return vRs_octa.reshape(6, 4, 3, 3)[:,0].copy()    # 6*3*3
+
 def get_icosahedron_vertices():
     return vs.copy(), v_adjs.copy(), v_level2s.copy(), v_opps.copy(), vRs.copy()
 
 def get_tetrahedron_vertices():
     return vs_tetra.copy(), v_adjs_tetra.copy(), vRs_tetra.copy(), ecs_tetra.copy(), face_normals_tetra.copy()
+
+def get_octahedron_vertices():
+    return vs_octa.copy(), v_adjs_octa.copy(), vRs_octa.copy(), ecs_octa.copy(), face_normals_octa.copy()
 
 def get_relativeV_index():
     trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)

@@ -24,6 +24,8 @@ void single_grid_subsampling_cpu(
   std::size_t iZ = 0;
   std::size_t mapIdx = 0;
   std::unordered_map<std::size_t, SampledData> data;
+  std::unordered_map<std::size_t, SampledListPoints> data_choose;
+
 
   for (auto& p : points) {
 //    iX = static_cast<std::size_t>(floor((p.x - originCorner.x) * sub_scale));
@@ -39,11 +41,22 @@ void single_grid_subsampling_cpu(
     }
 
     data[mapIdx].update(p);
+
+    if (!data_choose.count(mapIdx)) {
+      data_choose.emplace(mapIdx, SampledListPoints());
+    }
+
+    data_choose[mapIdx].update(p);
   }
 
   s_points.reserve(data.size());
-  for (auto& v : data) {
-    s_points.push_back(v.second.point * (1.0 / v.second.count));
+  // the average point
+  // for (auto& v : data) {
+  //   s_points.push_back(v.second.point * (1.0 / v.second.count));
+  // }
+  // choose the point closest to the average
+  for (auto& v : data_choose) {
+    s_points.push_back(v.second.choose());
   }
 }
 

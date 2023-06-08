@@ -137,6 +137,8 @@ class KPConvInterSO3(nn.Module):
                 assert self.K == 15, self.K
             elif self.kanchor == 12 and self.quotient_factor == 1:
                 assert self.K == 15, self.K
+            elif self.kanchor == 6 and self.quotient_factor == 4:
+                assert self.K == 15, self.K
             else:
                 raise NotImplementedError
             
@@ -155,6 +157,14 @@ class KPConvInterSO3(nn.Module):
                 kernels = vts * 0.7 * self.radius
                 K_points_numpy = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0) # 15,3
                 # print(f"S2Conv kernels, {kernels.shape}")
+            elif self.kanchor * self.quotient_factor == 24:
+                # Octahedron vertices
+                vertices, v_adjs, vRs, ecs, face_normals = L.get_octahedron_vertices()
+                vts = np.concatenate([vertices, face_normals], axis=0)
+                kernels = vts * 0.7 * self.radius
+                # add the center point
+                K_points_numpy = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0)
+                print(f"S2Conv kernels, {K_points_numpy.shape}")
             else:
                 raise NotImplementedError
 
@@ -191,6 +201,12 @@ class KPConvInterSO3(nn.Module):
                     ### E2PN mode for SO(3)
                     assert self.quotient_factor == 5, self.quotient_factor
                     anchors = L.get_anchorsV12()
+                    quotient_anchors = L.anchors_z(self.quotient_factor)
+                    self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
+                                requires_grad=False)
+                elif self.kanchor == 6:
+                    assert self.quotient_factor == 4, self.quotient_factor
+                    anchors = L.get_anchorsV24()
                     quotient_anchors = L.anchors_z(self.quotient_factor)
                     self.quotient_anchors = nn.Parameter(torch.tensor(quotient_anchors, dtype=torch.float32),
                                 requires_grad=False)

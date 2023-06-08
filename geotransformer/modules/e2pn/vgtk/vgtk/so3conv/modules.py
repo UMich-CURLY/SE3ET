@@ -172,7 +172,12 @@ class BasicS2ConvV2(nn.Module):
 
             assert n_param_effective == 36, f"n_param_effective {n_param_effective} not implemented"
             assert self.kernel_size == 13, f"kernel_size {kernel_size} not implemented"
-
+        elif self.anchor_size == 6:
+            assert n_param_effective == 27, f"n_param_effective {n_param_effective} not implemented"
+            assert self.kernel_size == 15, f"kernel_size {kernel_size} not implemented"
+        else:
+            raise NotImplementedError
+        
         idxs_k = self.trace_idxv_rot.transpose(0,1)[:,None,:].expand(-1, anchor_size, -1)  # a(rotations),k -> k, a(channels), a(rotations)
         
         idxs_a = self.trace_idx_rot.transpose(0,1)[None].expand(kernel_size, -1, -1) # a(rotations),a(channels) -> k, a(channels), a(rotations)
@@ -187,6 +192,8 @@ class BasicS2ConvV2(nn.Module):
         trace_idxv_ori, trace_idxv_rot = fr.get_relativeV_index(anchor_Rzs, kernel_pts) # n_rz * n_kpt
         trace_idxr_ori, trace_idxr_rot = fr.get_relativeV_index(anchor_Rzs, anchors_vs)    # n_rz * n_anchors
         trace_idxr_rot = trace_idxr_rot.swapaxes(0,1)
+        # print('trace_idxv_ori\n', trace_idxv_ori)
+        # print('trace_idxr_ori\n', trace_idxr_ori)
         ### index: (Ri, pj)
         kernel_size = kernel_pts.shape[0]
         anchor_size = anchors_vs.shape[0]
@@ -426,6 +433,20 @@ class S2Conv(nn.Module):
             
             # get so3 anchors (4x3x3 rotation matrices, the section of each element in S2)
             anchors = L.get_anchorsV12(tetra=True)   # 4*3*3
+        elif kanchor == 6:
+            # Octahedron vertices
+            vertices, v_adjs, vRs, ecs, face_normals = L.get_octahedron_vertices()
+            vts = np.concatenate([vertices, face_normals], axis=0)
+            kernels = vts * KERNEL_CONDENSE_RATIO * radius
+            # add the center point
+            kernels = np.concatenate([kernels, np.zeros_like(kernels[[0]])], axis=0)
+            print(f"S2Conv vertices, {vertices.shape}")
+            print(f"S2Conv ecs, {ecs.shape}")
+            print(f"S2Conv face_normals, {face_normals.shape}")
+            print(f"S2Conv kernels, {kernels.shape}")
+            
+            # get so3 anchors (24x3x3 rotation matrices, the section of each element in S2)
+            anchors = L.get_anchorsV24()   # 24*3*3
         else:
             raise NotImplementedError('kanchor = {} not implemented'.format(kanchor))
 
@@ -449,6 +470,8 @@ class S2Conv(nn.Module):
             self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0], 5, anchors, kernels, vertices)
         elif kanchor == 4:
             self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0], 3, anchors, kernels, vertices)
+        elif kanchor == 6:
+            self.basic_conv = BasicS2ConvV2(dim_in, dim_out, self.kernel_size, anchors.shape[0], 4, anchors, kernels, vertices)
         
 
         self.register_buffer('anchors', torch.tensor(anchors).to(torch.float32))
