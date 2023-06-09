@@ -105,7 +105,11 @@ class RotationMatchingLoss(nn.Module):
             # [3 1 0 2]
             # [3 0 2 1]
             # [3 2 1 0]]
-
+        elif self.na == 6:
+            vs, v_adjs, vRs, ecs, face_normals = sptk.get_octahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            self.trace_idx_ori, _ = fr.get_relativeV_index(vRs, vs)
         else:
             raise NotImplementedError(f"kanchor={self.na} is not implemented in the RotationMatchingLoss()")
         pos_weight = 3 * torch.ones((self.na, self.na)).to(self.device)
@@ -170,9 +174,9 @@ class OverallLoss(nn.Module):
     def forward(self, output_dict, data_dict):
         coarse_loss = self.coarse_loss(output_dict)
         fine_loss = self.fine_loss(output_dict, data_dict)
-        rotation_loss = self.rotation_loss(output_dict, data_dict)
 
         if self.supervise_rotation:
+            rotation_loss = self.rotation_loss(output_dict, data_dict)
             loss = self.weight_coarse_loss * coarse_loss + self.weight_fine_loss * fine_loss + self.weight_rotation_loss * rotation_loss
 
             return {

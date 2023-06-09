@@ -111,7 +111,7 @@ _C.epn = edict()
 ### Valid parameter set 3: kanchor = 6, quotient_factor  = 4, k = 19
 _C.epn.kanchor = 6 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
 _C.epn.quotient_factor = 4 # > 1 enables quotient features. 2 results in C6/C2. 
-_C.epn.num_kernel_points = 15 # Number of kernel points
+_C.epn.num_kernel_points = 7 # Number of kernel points
 # _C.num_points = 4096
 # ======== EPN ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13

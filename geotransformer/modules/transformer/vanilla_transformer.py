@@ -152,6 +152,15 @@ class MultiHeadAttentionEQ(nn.Module):
             self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
             self.nr = trace_idx_ori.shape[0]
             self.na = trace_idx_ori.shape[1]
+        elif self.kanchor == 6:
+            vs, v_adjs, vRs, ecs, face_normals = L.get_octahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            trace_idx_ori, trace_idx_rot = fr.get_relativeV_index(vRs, vs)
+            self.trace_idx_ori = nn.Parameter(torch.tensor(trace_idx_ori, dtype=torch.int64), requires_grad=False)
+            self.trace_idx_rot = nn.Parameter(torch.tensor(trace_idx_rot, dtype=torch.int64), requires_grad=False)
+            self.nr = trace_idx_ori.shape[0]
+            self.na = trace_idx_ori.shape[1]
         elif self.kanchor == 4:
             vs, v_adjs, vRs, ecs, face_normals = sptk.get_tetrahedron_vertices()
             self.adj0 = v_adjs[0,0]
