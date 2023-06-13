@@ -147,10 +147,10 @@ class RotationMatchingLoss(nn.Module):
         # print('index1', index1)
 
         # contruct ground true label matrix
-        src = torch.ones((4, 1)).to(self.device)
-        target0 = torch.zeros(4, 4, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
+        src = torch.ones((self.na, 1)).to(self.device)
+        target0 = torch.zeros(self.na, self.na, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
         # print('target0\n', target0)
-        target1 = torch.zeros(4, 4, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
+        target1 = torch.zeros(self.na, self.na, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
         # print('target1\n', target1)
 
         # attn_w0 P0 = P1, attn_w1 P1 = P0
