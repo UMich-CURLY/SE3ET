@@ -90,7 +90,7 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
         data_dict['overlap'] = metadata['overlap']
 
         # get transformation
-        r = R.from_euler('z', 120, degrees=True)
+        r = R.from_euler('z', 0, degrees=True)
         rotation = r.as_matrix()
         translation = np.zeros((3,))
 

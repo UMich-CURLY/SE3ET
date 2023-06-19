@@ -112,7 +112,7 @@ class RotationMatchingLoss(nn.Module):
             self.trace_idx_ori, _ = fr.get_relativeV_index(vRs, vs)
         else:
             raise NotImplementedError(f"kanchor={self.na} is not implemented in the RotationMatchingLoss()")
-        pos_weight = (self.na - 1) * torch.ones((self.na, self.na)).to(self.device)
+        pos_weight = 3 * torch.ones((self.na, self.na)).to(self.device)
         self.criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     
     def forward(self, output_dict, data_dict):
@@ -147,10 +147,10 @@ class RotationMatchingLoss(nn.Module):
         # print('index1', index1)
 
         # contruct ground true label matrix
-        src = torch.ones((self.na, 1)).to(self.device)
-        target0 = torch.zeros(self.na, self.na, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
+        src = torch.ones((4, 1)).to(self.device)
+        target0 = torch.zeros(4, 4, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
         # print('target0\n', target0)
-        target1 = torch.zeros(self.na, self.na, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
+        target1 = torch.zeros(4, 4, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
         # print('target1\n', target1)
 
         # attn_w0 P0 = P1, attn_w1 P1 = P0
@@ -194,6 +194,69 @@ class OverallLoss(nn.Module):
                 'f_loss': fine_loss,
             }
 
+
+class CheckAttention(nn.Module):
+    def __init__(self, cfg):
+        super(CheckAttention, self).__init__()
+        """
+        mode 0: attn_w0 P0 = P1
+        mode 1: attn_w1 P1 = P0
+        """
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.na = cfg.epn.kanchor
+        if self.na == 4:
+            # define the anchors
+            vs, v_adjs, vRs, ecs, face_normals = sptk.get_tetrahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            self.trace_idx_ori, _ = fr.get_relativeV_index(vRs, vs) # 12*4, 12*4
+        elif self.na == 6:
+            vs, v_adjs, vRs, ecs, face_normals = sptk.get_octahedron_vertices()
+            self.adj0 = v_adjs[0,0]
+            self.anchors = nn.Parameter(torch.tensor(vRs, dtype=torch.float32), requires_grad=False)  # 12*3*3
+            self.trace_idx_ori, _ = fr.get_relativeV_index(vRs, vs)
+        else:
+            raise NotImplementedError(f"kanchor={self.na} is not implemented in the RotationMatchingLoss()")
+    
+    def forward(self, output_dict, data_dict):
+        """
+        targets are either 0 or 1
+        """
+        # load attention weights from output_dict
+        attn_matrix0 = output_dict['attn_matrix0'].squeeze() # 4*4
+        print('attn_matrix0\n', attn_matrix0.shape, '\n', attn_matrix0)
+        attn_matrix1 = output_dict['attn_matrix1'].squeeze() # 4*4
+        print('attn_matrix1\n', attn_matrix1.shape, '\n', attn_matrix1)
+
+        # get ground truth rotation matrix from data_dict
+        # ref_points = src_points @ rotation.T + translation
+        gt_T0 = data_dict['transform'] # (4, 4)
+        gt_R0 = gt_T0[:3, :3] # (3, 3) 
+        print('gt_R0\n', gt_R0)
+
+        # Find the nearest anchor from the ground truth rotation
+        # T = R_target * anchors[label]
+        R0_target, R0_label = fr.label_relative_rotation_simple(self.anchors, gt_R0)
+        v0 = torch.Tensor(self.trace_idx_ori[R0_label]).long()
+        print('R0_label', R0_label)
+        index0 = v0.reshape((-1, 1)).to(self.device)
+        print('index0', index0)
+
+        # transpose the rotation matrix for supervising attn_matrix1
+        gt_R1 = gt_R0.T # (3, 3) 
+        print('gt_R1\n', gt_R1)
+        R1_target, R1_label = fr.label_relative_rotation_simple(self.anchors, gt_R1)
+        v1 = torch.Tensor(self.trace_idx_ori[R1_label]).long()
+        print('R1_label', R1_label)
+        index1 = v1.reshape((-1, 1)).to(self.device)
+        print('index1', index1)
+
+        # contruct ground true label matrix
+        src = torch.ones((self.na, 1)).to(self.device)
+        target0 = torch.zeros(self.na, self.na, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
+        print('target0\n', target0)
+        target1 = torch.zeros(self.na, self.na, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
+        print('target1\n', target1)
 
 class Evaluator(nn.Module):
     def __init__(self, cfg):

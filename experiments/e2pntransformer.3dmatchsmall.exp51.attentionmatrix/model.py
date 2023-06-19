@@ -216,7 +216,6 @@ class GeoTransformer(nn.Module):
             output_dict['src_corr_points'] = src_corr_points
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
-            torch.cuda.empty_cache()
 
         return output_dict
 
