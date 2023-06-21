@@ -42,6 +42,8 @@ class GeometricStructureEmbedding(nn.Module):
             vRs = sptk.get_anchorsV12()  # 12(in 60)*3*3
         elif self.kanchor == 4:
             vRs = sptk.get_anchorsV12(tetra=True)  # 4(in 12)*3*3
+        elif self.kanchor == 6:
+            vRs = sptk.get_anchorsV24()  # 6(in 24)*3*3
         else:
             raise NotImplementedError(f'self.kanchor={self.kanchor} not implemented')
 
