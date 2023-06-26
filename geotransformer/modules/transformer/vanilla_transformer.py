@@ -122,7 +122,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_on_sub = False
         self.attn_r_summ = 'mean'
         self.attn_r_multihead = False
-        self.attn_r_positive = 'sq' # 'sq', 'abs', 'relu', 'sigmoid', None
+        self.attn_r_positive = 'relu' # 'sq', 'abs', 'relu', 'sigmoid', None
         self.num_correspondences = 256
         # self.attn_r_soft = False
         # self.attn_ra_soft = False
@@ -230,6 +230,17 @@ class MultiHeadAttentionEQ(nn.Module):
         b = q.shape[0]
         n = q.shape[-2]
         m = k.shape[-2]
+
+        ####################
+        ### normalization ##
+        ####################
+        q_normalized = F.normalize(q, dim=-1) # normalize on the c dimension
+        k_normalized = F.normalize(k, dim=-1)
+        # print('differences between q and k:', torch.norm(q - k))
+        # print('differences between nomalized q and k:', torch.norm(q_normalized - k_normalized))
+        # print('q_normalized', q_normalized.amax(), q_normalized.amin(), q_normalized.mean())
+        # print('k_normalized', k_normalized.amax(), k_normalized.amin(), k_normalized.mean())
+
         ####################
         ### local attention
         ####################
@@ -240,6 +251,9 @@ class MultiHeadAttentionEQ(nn.Module):
         else:
             attention_scores_ae = torch.einsum('bahnc,behmc->baehnm', q, k) \
                                 / self.d_model_per_head ** 0.5
+            attention_scores_ae_normalized = torch.einsum('bahnc,behmc->baehnm', q_normalized, k_normalized)
+            
+        # print('local attention_scores_ae', attention_scores_ae.shape)
         
         if self.attn_mode is None:
             return attention_scores_ae, None, None
@@ -256,16 +270,24 @@ class MultiHeadAttentionEQ(nn.Module):
         ### make the attention value non-negative for rotation/anchor normalization
         if self.attn_r_positive == 'sq':
             attention_scores_ae = attention_scores_ae**2
+            attention_scores_ae_normalized = attention_scores_ae_normalized**2
         elif self.attn_r_positive == 'abs':
             attention_scores_ae = torch.abs(attention_scores_ae)
+            attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'relu':
             attention_scores_ae = F.relu(attention_scores_ae)
+            attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'sigmoid':
             attention_scores_ae = F.sigmoid(attention_scores_ae)
+            attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
+        
+
+        # print('global attention_scores_ae', attention_scores_ae.shape)
 
         ### pool over all points
         if self.attn_r_summ == 'mean':
             attn_ae = attention_scores_ae.mean([-2,-1])   # bae(h)
+            attn_ae_normalized = attention_scores_ae_normalized.mean([-2,-1])
         elif self.attn_r_summ == 'double_norm':
             ref_matching_scores = attention_scores_ae / attention_scores_ae.sum(dim=-1, keepdim=True)
             src_matching_scores = attention_scores_ae / attention_scores_ae.sum(dim=-2, keepdim=True)
@@ -275,6 +297,9 @@ class MultiHeadAttentionEQ(nn.Module):
             attn_ae = corr_scores.mean(-1)          # bae(h)
         else:
             raise NotImplementedError(f'attn_r_summ ={self.attn_r_summ} not recognized')
+        
+
+        # print('attn_ae', attn_ae.shape, '\n', attn_ae)
         
         if self.attn_mode == 'a_soft':
             ### calculate the global anchor attention weight
@@ -387,7 +412,7 @@ class MultiHeadAttentionEQ(nn.Module):
                     attention_scores = attention_scores_ae_raw.flatten(0,2)[idx]   # baehnm -> barhnm
                     attention_scores = attention_scores.transpose(1,2)             # brahnm
 
-            return attention_scores, [attn_r, attn_ae]
+            return attention_scores, [attn_r, attn_ae_normalized]
             ### attention_scores: local attention matrix; attn_ae: global rotation attention matrix
         elif self.attn_mode == 'r_best':
             ### pick the optimal rotation in key and permute key anchors accordingly
@@ -581,9 +606,14 @@ class MultiHeadAttentionEQ(nn.Module):
                 'attention_scores': torch.Tensor (B, A, A, H, N, M), local attention scores
                 'attn_w' ('attn_idx'): global rotation or anchor attention scores (or best indices)
         """
+
+        # print('differences between input q and k:', torch.norm(input_q - input_k))
+
         q = rearrange(self.proj_q(input_q), 'b a n (h c) -> b a h n c', h=self.num_heads)
         k = rearrange(self.proj_k(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
         v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
+        # k = rearrange(self.proj_q(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
+        # v = rearrange(self.proj_q(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
 
         attention_scores, attn_w = self.cross_anchor_attn_aa(q, k)     
         ### local and global attention matrix, of the same shape: baehnm / brahnm / bahnm

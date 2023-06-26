@@ -47,7 +47,7 @@ _C.train.augmentation_rotation = 1.0
 _C.test = edict()
 _C.test.batch_size = 1
 _C.test.num_workers = 8
-_C.test.point_limit = None
+_C.test.point_limit = 10000
 
 # evaluation
 _C.eval = edict()
@@ -112,24 +112,24 @@ _C.epn = edict()
 # _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
 # ======== E2PN ======== 
 ### Valid parameter set 1: kanchor = 4, quotient_factor  = 3, k = 15
-# _C.epn.kanchor = 4 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
-# _C.epn.quotient_factor = 3 # > 1 enables quotient features. 2 results in C6/C2. 
-# _C.epn.num_kernel_points = 15 # Number of kernel points
-# _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
-# _C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
-# _C.epn.fixed_kernel_points = 'center' # # Fixed points in the kernel : 'none', 'center' or 'verticals' # 'verticals' combined with equiv_mode_kp=True results in z-axis symmetric kernel
-# _C.epn.rot_by_permute = True # rotate-by-permute in full conv
-# _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
-# ======== E2PN ======== 
-### Valid parameter set 1: kanchor = 4, quotient_factor  = 3, k = 19
-_C.epn.kanchor = 6 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
-_C.epn.quotient_factor = 4 # > 1 enables quotient features. 2 results in C6/C2. 
-_C.epn.num_kernel_points = 15 # Number of kernel points, 7 or 15
+_C.epn.kanchor = 4 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+_C.epn.quotient_factor = 3 # > 1 enables quotient features. 2 results in C6/C2. 
+_C.epn.num_kernel_points = 15 # Number of kernel points
 _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
 _C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
 _C.epn.fixed_kernel_points = 'center' # # Fixed points in the kernel : 'none', 'center' or 'verticals' # 'verticals' combined with equiv_mode_kp=True results in z-axis symmetric kernel
 _C.epn.rot_by_permute = True # rotate-by-permute in full conv
 _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
+# ======== E2PN ======== 
+### Valid parameter set 1: kanchor = 4, quotient_factor  = 3, k = 19
+# _C.epn.kanchor = 6 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
+# _C.epn.quotient_factor = 4 # > 1 enables quotient features. 2 results in C6/C2. 
+# _C.epn.num_kernel_points = 15 # Number of kernel points, 7 or 15
+# _C.epn.non_sep_conv = True # full (non-separable) conv; True: E2PN, False: EPN
+# _C.epn.equiv_mode_kp = True # False: for KPConv, load kernel with small noise # combined with fixed_kernel_points = 'verticals' results in z-axis symmetric kernel
+# _C.epn.fixed_kernel_points = 'center' # # Fixed points in the kernel : 'none', 'center' or 'verticals' # 'verticals' combined with equiv_mode_kp=True results in z-axis symmetric kernel
+# _C.epn.rot_by_permute = True # rotate-by-permute in full conv
+# _C.epn.ignore_steer_constraint = False # ignore steerability constraint when using quotient features
 # ======== EPN ======== 
 ### Valid parameter set 2: kanchor = 60, quotient_factor  = 1, k = 13
 # _C.epn.kanchor = 60 # number of rotation anchors A; 12: E2PN, 60 & lower than 10: EPN
