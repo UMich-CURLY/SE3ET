@@ -122,7 +122,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_on_sub = False
         self.attn_r_summ = 'mean'
         self.attn_r_multihead = False
-        self.attn_r_positive = 'relu' # 'sq', 'abs', 'relu', 'sigmoid', None
+        self.attn_r_positive = 'sq' # 'sq', 'abs', 'relu', 'sigmoid', None
         self.num_correspondences = 256
         # self.attn_r_soft = False
         # self.attn_ra_soft = False
@@ -267,6 +267,7 @@ class MultiHeadAttentionEQ(nn.Module):
         if not self.attn_r_multihead:
             ### average over attention heads
             attention_scores_ae = attention_scores_ae.mean(3) # baenm
+            attention_scores_ae_normalized = attention_scores_ae_normalized.mean(3) # baenm
         ### make the attention value non-negative for rotation/anchor normalization
         if self.attn_r_positive == 'sq':
             attention_scores_ae = attention_scores_ae**2
@@ -295,6 +296,13 @@ class MultiHeadAttentionEQ(nn.Module):
             num_correspondences = min(self.num_correspondences, matching_scores.numel())
             corr_scores, corr_indices = matching_scores.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
             attn_ae = corr_scores.mean(-1)          # bae(h)
+
+            ref_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-1, keepdim=True)
+            src_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-2, keepdim=True)
+            matching_scores_normalized = ref_matching_scores_normalized * src_matching_scores_normalized
+            num_correspondences_normalized = min(self.num_correspondences, matching_scores_normalized.numel())
+            corr_scores_normalized, corr_indices_normalized = matching_scores_normalized.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
+            attention_scores_ae_normalized = corr_scores_normalized.mean(-1)          # bae(h)
         else:
             raise NotImplementedError(f'attn_r_summ ={self.attn_r_summ} not recognized')
         
