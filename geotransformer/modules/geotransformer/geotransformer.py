@@ -137,6 +137,7 @@ class GeometricTransformer(nn.Module):
         supervise_rotation=False,
         reduction_a='max',
         na=None,
+        attn_r_positive='sq',
         align_mode='0',
         alternative_impl=False,
         n_level_equiv=0,
@@ -174,8 +175,9 @@ class GeometricTransformer(nn.Module):
                 self.transformer = RPEConditionalTransformer(
                     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
                     return_attention_weights=True,
-                    parallel=True,
+                    # parallel=True,
                     na=na,
+                    attn_r_positive=attn_r_positive,
                     align_mode=align_mode,
                     alternative_impl=alternative_impl,
                     d_equiv_embed=self.d_equiv_embed,
@@ -184,8 +186,9 @@ class GeometricTransformer(nn.Module):
                 # transformer that handle equivariant features
                 self.transformer = RPEConditionalTransformer(
                     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
-                    parallel=True,
+                    # parallel=True,
                     na=na,
+                    attn_r_positive=attn_r_positive,
                     align_mode=align_mode,
                     alternative_impl=alternative_impl,
                     d_equiv_embed=self.d_equiv_embed,

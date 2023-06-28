@@ -76,7 +76,7 @@ class MultiHeadAttention(nn.Module):
         return hidden_states, attention_scores
 
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=4):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
         """
         The equivariant attention has four steps. 
             1. calculate the local attention matrix (per-point-pair, per-anchor-pair inner products);
@@ -122,7 +122,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_on_sub = False
         self.attn_r_summ = 'mean'
         self.attn_r_multihead = False
-        self.attn_r_positive = 'sq' # 'sq', 'abs', 'relu', 'sigmoid', None
+        self.attn_r_positive = attn_r_positive # 'sq', 'abs', 'relu', 'sigmoid', None
         self.num_correspondences = 256
         # self.attn_r_soft = False
         # self.attn_ra_soft = False
@@ -711,11 +711,11 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
-            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
+            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive)
         else:
             self.attention = MultiHeadAttention(d_model, num_heads, dropout=dropout)
         self.linear = nn.Linear(d_model, d_model)
@@ -747,10 +747,10 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
-        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor)
+        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(

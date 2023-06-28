@@ -104,6 +104,7 @@ class RPEConditionalTransformer(nn.Module):
         return_attention_weights=False,
         parallel=False,
         na=4,
+        attn_r_positive='sq',
         align_mode='0',
         alternative_impl=False,
         d_equiv_embed=0,
@@ -122,7 +123,7 @@ class RPEConditionalTransformer(nn.Module):
             else:
                 assert 'cross' in block, block
                 attn_mode = _check_block_attn_mode(block)
-                layers.append(TransformerLayer(d_model, num_heads, dropout=dropout, activation_fn=activation_fn, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=na))
+                layers.append(TransformerLayer(d_model, num_heads, dropout=dropout, activation_fn=activation_fn, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=na, attn_r_positive=attn_r_positive))
         self.layers = nn.ModuleList(layers)
         if 'cross_r_soft' in self.blocks or 'cross_r_best' in self.blocks:
             self.rotcompress = RotCompressOutput(d_model, dropout=dropout, activation_fn=activation_fn, na=na, dual_align=align_mode=='dual_early')
