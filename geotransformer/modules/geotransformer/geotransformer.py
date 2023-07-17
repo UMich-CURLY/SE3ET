@@ -175,7 +175,6 @@ class GeometricTransformer(nn.Module):
                 self.transformer = RPEConditionalTransformer(
                     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
                     return_attention_weights=True,
-                    # parallel=True,
                     na=na,
                     attn_r_positive=attn_r_positive,
                     align_mode=align_mode,
@@ -186,7 +185,6 @@ class GeometricTransformer(nn.Module):
                 # transformer that handle equivariant features
                 self.transformer = RPEConditionalTransformer(
                     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
-                    # parallel=True,
                     na=na,
                     attn_r_positive=attn_r_positive,
                     align_mode=align_mode,

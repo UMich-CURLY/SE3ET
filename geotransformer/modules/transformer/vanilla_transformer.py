@@ -218,7 +218,7 @@ class MultiHeadAttentionEQ(nn.Module):
             raise NotImplementedError(f'self.kanchor={self.kanchor} not implemented')
         return
 
-    def cross_anchor_attn_aa(self, q, k):
+    def cross_anchor_attn_aa(self, q, k, input_q, input_k):
         '''q: bahnc, k: behmc -> 
         attention_scores: baehnm / brahnm / bahnm
         where: b: batch size; 
@@ -234,8 +234,8 @@ class MultiHeadAttentionEQ(nn.Module):
         ####################
         ### normalization ##
         ####################
-        q_normalized = F.normalize(q, dim=-1) # normalize on the c dimension
-        k_normalized = F.normalize(k, dim=-1)
+        q_normalized = F.normalize(input_q, dim=-1) # normalize on the c dimension
+        k_normalized = F.normalize(input_k, dim=-1)
         # print('differences between q and k:', torch.norm(q - k))
         # print('differences between nomalized q and k:', torch.norm(q_normalized - k_normalized))
         # print('q_normalized', q_normalized.amax(), q_normalized.amin(), q_normalized.mean())
@@ -271,16 +271,17 @@ class MultiHeadAttentionEQ(nn.Module):
         ### make the attention value non-negative for rotation/anchor normalization
         if self.attn_r_positive == 'sq':
             attention_scores_ae = attention_scores_ae**2
-            attention_scores_ae_normalized = attention_scores_ae_normalized**2
+            # attention_scores_ae_normalized = attention_scores_ae_normalized**2
         elif self.attn_r_positive == 'abs':
             attention_scores_ae = torch.abs(attention_scores_ae)
-            attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
+            # attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'relu':
             attention_scores_ae = F.relu(attention_scores_ae)
-            attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
+            # attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'sigmoid':
             attention_scores_ae = F.sigmoid(attention_scores_ae)
-            attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
+
+        attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
         
 
         # print('global attention_scores_ae', attention_scores_ae.shape)
@@ -620,10 +621,11 @@ class MultiHeadAttentionEQ(nn.Module):
         q = rearrange(self.proj_q(input_q), 'b a n (h c) -> b a h n c', h=self.num_heads)
         k = rearrange(self.proj_k(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
         v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
-        # k = rearrange(self.proj_q(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
-        # v = rearrange(self.proj_q(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
+        q_rearrange = rearrange(input_q, 'b a n (h c) -> b a h n c', h=self.num_heads)
+        k_rearrange = rearrange(input_k, 'b a m (h c) -> b a h m c', h=self.num_heads)
+        # v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
 
-        attention_scores, attn_w = self.cross_anchor_attn_aa(q, k)     
+        attention_scores, attn_w = self.cross_anchor_attn_aa(q, k, q_rearrange, k_rearrange)     
         ### local and global attention matrix, of the same shape: baehnm / brahnm / bahnm
         
         if self.attn_mode in ['a_best', 'r_best']:
