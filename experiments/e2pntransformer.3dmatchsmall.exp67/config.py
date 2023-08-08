@@ -195,12 +195,12 @@ _C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft'
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3
-_C.geotransformer.supervise_rotation = True
+_C.geotransformer.supervise_rotation = False
 _C.geotransformer.reduction_a = 'max'
 _C.geotransformer.align_mode = '0'
 _C.geotransformer.alternative_impl = False
 _C.geotransformer.n_level_equiv = 0
-_C.geotransformer.attn_r_positive = 'sq' # 'sq', 'abs', 'relu', 'sigmoid', None
+_C.geotransformer.attn_r_positive = 'leakyrelu' # 'sq', 'abs', 'sigmoid', 'leakyrelu', None
 _C.geotransformer.attn_r_positive_rot_supervise = 'sigmoid'
 
 # model - Fine Matching

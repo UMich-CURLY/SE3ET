@@ -43,8 +43,6 @@ class GeoTransformer(nn.Module):
             supervise_rotation=cfg.geotransformer.supervise_rotation,
             reduction_a=cfg.geotransformer.reduction_a,
             na=cfg.epn.kanchor,
-            attn_r_positive=cfg.geotransformer.attn_r_positive,
-            attn_r_positive_rot_supervise=cfg.geotransformer.attn_r_positive_rot_supervise,
             align_mode=cfg.geotransformer.align_mode,
             alternative_impl=cfg.geotransformer.alternative_impl,
             n_level_equiv=cfg.geotransformer.n_level_equiv,
@@ -218,7 +216,6 @@ class GeoTransformer(nn.Module):
             output_dict['src_corr_points'] = src_corr_points
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
-            torch.cuda.empty_cache()
 
         return output_dict
 

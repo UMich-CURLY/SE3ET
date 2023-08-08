@@ -58,14 +58,29 @@ class RPEMultiHeadAttention(nn.Module):
             k = rearrange(self.proj_k(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
             v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
             p = rearrange(self.proj_p(embed_qk), 'b n m (h c) -> b h n m c', h=self.num_heads)
+
+            # print('self attention input q (mean, std):', torch.mean(input_q), torch.std(input_q))
+            # print('self attention q (mean, std):', torch.mean(q), torch.std(q))
+            # print('self attention input k (mean, std):', torch.mean(input_k), torch.std(input_k))
+            # print('self attention k (mean, std):', torch.mean(k), torch.std(k))
+            # print('self attention input v (mean, std):', torch.mean(input_v), torch.std(input_v))
+            # print('self attention v (mean, std):', torch.mean(v), torch.std(v))
+            # print('self attention input p (mean, std):', torch.mean(embed_qk), torch.std(embed_qk))
+            # print('self attention p (mean, std):', torch.mean(p), torch.std(p))
             
             attention_scores_p = torch.einsum('bahnc,bhnmc->bahnm', q, p)
             attention_scores_e = torch.einsum('bahnc,bahmc->bahnm', q, k)
+            # print('self attention_scores_p (mean, std):', torch.mean(attention_scores_p), torch.std(attention_scores_p))
+            # print('self attention_scores_e (mean, std):', torch.mean(attention_scores_e), torch.std(attention_scores_e))
 
             if self.d_equiv_embed > 0:
                 assert embed_eq is not None, 'Equivariant embedding required here.'
                 eq = rearrange(self.proj_eq(embed_eq), 'b a n m (h c) -> b a h n m c', h=self.num_heads)
                 attention_scores_eq = torch.einsum('bahnc,bahnmc->bahnm', q, eq)
+                # print('self attention input embed_eq (mean, std):', torch.mean(embed_eq), torch.std(embed_eq))
+                # print('self attention eq (mean, std):', torch.mean(eq), torch.std(eq))
+                # print('self attention_scores_eq (mean, std):', torch.mean(attention_scores_eq), torch.std(attention_scores_eq))
+            
 
         else:
             q = rearrange(self.proj_q(input_q), 'b n (h c) -> b h n c', h=self.num_heads)
@@ -78,8 +93,11 @@ class RPEMultiHeadAttention(nn.Module):
 
         if self.equivariant and self.d_equiv_embed > 0:
             attention_scores = (attention_scores_e + attention_scores_p + attention_scores_eq) / self.d_model_per_head ** 0.5
+            # print('self attention_scores (mean, std):', torch.mean(attention_scores), torch.std(attention_scores))
+            # print('self.d_model_per_head', self.d_model_per_head)
         else:
             attention_scores = (attention_scores_e + attention_scores_p) / self.d_model_per_head ** 0.5
+            # print('self attention_scores (mean, std):', torch.mean(attention_scores), torch.std(attention_scores))
 
         if attention_factors is not None:
             if self.equivariant:
@@ -98,6 +116,9 @@ class RPEMultiHeadAttention(nn.Module):
                 attention_scores = attention_scores.masked_fill(key_masks.unsqueeze(1).unsqueeze(1), float('-inf'))
         attention_scores = F.softmax(attention_scores, dim=-1)
         attention_scores = self.dropout(attention_scores)
+
+        # print('self attention_scores after softmax mean', torch.mean(attention_scores))
+        # print('self attention_scores after softmax std', torch.std(attention_scores))
 
         hidden_states = torch.matmul(attention_scores, v)
 

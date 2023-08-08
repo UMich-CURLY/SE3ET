@@ -76,7 +76,7 @@ class MultiHeadAttention(nn.Module):
         return hidden_states, attention_scores
 
 class MultiHeadAttentionEQ(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
+    def __init__(self, d_model, num_heads, dropout=None, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq', attn_r_positive_rot_supervise='sigmoid'):
         """
         The equivariant attention has four steps. 
             1. calculate the local attention matrix (per-point-pair, per-anchor-pair inner products);
@@ -123,6 +123,7 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_r_summ = 'mean'
         self.attn_r_multihead = False
         self.attn_r_positive = attn_r_positive # 'sq', 'abs', 'relu', 'sigmoid', None
+        self.attn_r_positive_rot_supervise = attn_r_positive_rot_supervise
         self.num_correspondences = 256
         # self.attn_r_soft = False
         # self.attn_ra_soft = False
@@ -234,8 +235,8 @@ class MultiHeadAttentionEQ(nn.Module):
         ####################
         ### normalization ##
         ####################
-        q_normalized = F.normalize(input_q, dim=-1) # normalize on the c dimension
-        k_normalized = F.normalize(input_k, dim=-1)
+        q_normalized = F.normalize(q, dim=-1) # normalize on the c dimension
+        k_normalized = F.normalize(k, dim=-1)
         # print('differences between q and k:', torch.norm(q - k))
         # print('differences between nomalized q and k:', torch.norm(q_normalized - k_normalized))
         # print('q_normalized', q_normalized.amax(), q_normalized.amin(), q_normalized.mean())
@@ -251,7 +252,8 @@ class MultiHeadAttentionEQ(nn.Module):
         else:
             attention_scores_ae = torch.einsum('bahnc,behmc->baehnm', q, k) \
                                 / self.d_model_per_head ** 0.5
-            attention_scores_ae_normalized = torch.einsum('bahnc,behmc->baehnm', q_normalized, k_normalized)
+            attention_scores_ae_normalized = torch.einsum('bahnc,behmc->baehnm', q_normalized, k_normalized) \
+                                / self.d_model_per_head ** 0.5
             
         # print('local attention_scores_ae', attention_scores_ae.shape)
         
@@ -280,8 +282,27 @@ class MultiHeadAttentionEQ(nn.Module):
             # attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'sigmoid':
             attention_scores_ae = F.sigmoid(attention_scores_ae)
+        elif self.attn_r_positive == 'leadkyrelu':
+            attention_scores_ae = nn.LeakyReLU(attention_scores_ae)
+        elif self.attn_r_positive == 'softplus':
+            attention_scores_ae = nn.Softplus(attention_scores_ae)
 
-        attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
+
+        if self.attn_r_positive_rot_supervise == 'sq':
+            attention_scores_ae_normalized = attention_scores_ae_normalized**2
+            # attention_scores_ae_normalized = attention_scores_ae_normalized**2
+        elif self.attn_r_positive_rot_supervise == 'abs':
+            attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
+            # attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
+        elif self.attn_r_positive_rot_supervise == 'relu':
+            attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
+            # attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
+        elif self.attn_r_positive_rot_supervise == 'sigmoid':
+            attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
+        elif self.attn_r_positive_rot_supervise == 'leadkyrelu':
+            attention_scores_ae_normalized = nn.LeakyReLU(attention_scores_ae_normalized)
+        elif self.attn_r_positive_rot_supervise == 'softplus':
+            attention_scores_ae_normalized = nn.Softplus(attention_scores_ae_normalized)
         
 
         # print('global attention_scores_ae', attention_scores_ae.shape)
@@ -307,6 +328,7 @@ class MultiHeadAttentionEQ(nn.Module):
         else:
             raise NotImplementedError(f'attn_r_summ ={self.attn_r_summ} not recognized')
         
+        # print('self.attn_mode', self.attn_mode, 'attn_ae_normalized', attn_ae_normalized)
 
         # print('attn_ae', attn_ae.shape, '\n', attn_ae)
         
@@ -713,11 +735,11 @@ class MultiHeadAttentionEQ(nn.Module):
             return hidden_states, [attention_scores, attn_w]
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
+    def __init__(self, d_model, num_heads, dropout=None, equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq', attn_r_positive_rot_supervise='sigmoid'):
         super(AttentionLayer, self).__init__()
         self.equivariant = equivariant
         if self.equivariant:
-            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive)
+            self.attention = MultiHeadAttentionEQ(d_model, num_heads, dropout=dropout, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive, attn_r_positive_rot_supervise=attn_r_positive_rot_supervise)
         else:
             self.attention = MultiHeadAttention(d_model, num_heads, dropout=dropout)
         self.linear = nn.Linear(d_model, d_model)
@@ -749,10 +771,10 @@ class AttentionLayer(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq'):
+    def __init__(self, d_model, num_heads, dropout=None, activation_fn='ReLU', equivariant=False, attn_mode=None, alternative_impl=False, kanchor=4, attn_r_positive='sq', attn_r_positive_rot_supervise='sigmoid'):
         super(TransformerLayer, self).__init__()
         self.equivariant = equivariant
-        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive)
+        self.attention = AttentionLayer(d_model, num_heads, dropout=dropout, equivariant=equivariant, attn_mode=attn_mode, alternative_impl=alternative_impl, kanchor=kanchor, attn_r_positive=attn_r_positive, attn_r_positive_rot_supervise=attn_r_positive_rot_supervise)
         self.output = AttentionOutput(d_model, dropout=dropout, activation_fn=activation_fn)
 
     def forward(

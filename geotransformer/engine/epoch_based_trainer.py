@@ -86,6 +86,10 @@ class EpochBasedTrainer(BaseTrainer):
         self.before_train_epoch(self.epoch)
         self.optimizer.zero_grad()
         total_iterations = len(self.train_loader)
+
+        # snapshot
+        self.save_snapshot('init_weight.pth.tar')
+        
         for iteration, data_dict in enumerate(self.train_loader):
             self.inner_iteration = iteration + 1
             self.iteration += 1
