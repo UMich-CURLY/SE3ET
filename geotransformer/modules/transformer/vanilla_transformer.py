@@ -141,6 +141,11 @@ class MultiHeadAttentionEQ(nn.Module):
 
         self.dropout = build_dropout_layer(dropout)
 
+        if self.attn_r_positive == 'leakyrelu' or self.attn_r_positive_rot_supervise == 'leakyrelu':
+            self.leakyrelu = nn.LeakyReLU(0.1)
+        if self.attn_r_positive == 'softplus' or self.attn_r_positive_rot_supervise == 'softplus':
+            self.softplus = nn.Softplus()
+
         self.init_anchors()
     def init_anchors(self):
         if self.kanchor == 12:
@@ -283,9 +288,9 @@ class MultiHeadAttentionEQ(nn.Module):
         elif self.attn_r_positive == 'sigmoid':
             attention_scores_ae = F.sigmoid(attention_scores_ae)
         elif self.attn_r_positive == 'leadkyrelu':
-            attention_scores_ae = nn.LeakyReLU(attention_scores_ae)
+            attention_scores_ae = self.leakyrelu(attention_scores_ae)
         elif self.attn_r_positive == 'softplus':
-            attention_scores_ae = nn.Softplus(attention_scores_ae)
+            attention_scores_ae = self.softplus(attention_scores_ae)
 
 
         if self.attn_r_positive_rot_supervise == 'sq':
@@ -300,9 +305,9 @@ class MultiHeadAttentionEQ(nn.Module):
         elif self.attn_r_positive_rot_supervise == 'sigmoid':
             attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
         elif self.attn_r_positive_rot_supervise == 'leadkyrelu':
-            attention_scores_ae_normalized = nn.LeakyReLU(attention_scores_ae_normalized)
+            attention_scores_ae_normalized = self.leakyrelu(attention_scores_ae_normalized)
         elif self.attn_r_positive_rot_supervise == 'softplus':
-            attention_scores_ae_normalized = nn.Softplus(attention_scores_ae_normalized)
+            attention_scores_ae_normalized = self.softplus(attention_scores_ae_normalized)
         
 
         # print('global attention_scores_ae', attention_scores_ae.shape)
