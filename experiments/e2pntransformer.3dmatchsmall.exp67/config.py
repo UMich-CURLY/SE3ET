@@ -200,7 +200,7 @@ _C.geotransformer.reduction_a = 'max'
 _C.geotransformer.align_mode = '0'
 _C.geotransformer.alternative_impl = False
 _C.geotransformer.n_level_equiv = 0
-_C.geotransformer.attn_r_positive = 'leakyrelu' # 'sq', 'abs', 'sigmoid', 'leakyrelu', None
+_C.geotransformer.attn_r_positive = 'softplus' # 'sq', 'abs', 'sigmoid', 'leakyrelu', None
 _C.geotransformer.attn_r_positive_rot_supervise = 'sigmoid'
 
 # model - Fine Matching
