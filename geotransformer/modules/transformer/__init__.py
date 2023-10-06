@@ -17,3 +17,5 @@ from geotransformer.modules.transformer.vanilla_transformer import (
     TransformerEncoder,
     TransformerDecoder,
 )
+
+from geotransformer.modules.transformer.rotation_supervision import RotationAttentionLayer

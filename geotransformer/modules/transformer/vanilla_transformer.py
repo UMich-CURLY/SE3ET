@@ -11,6 +11,8 @@ from einops import rearrange
 from geotransformer.modules.layers import build_dropout_layer
 from geotransformer.modules.transformer.output_layer import AttentionOutput
 import geotransformer.modules.transformer.utils_epn.anchors as L
+from geotransformer.modules.geotransformer.superpoint_matching import SuperPointMatching
+from geotransformer.modules.geotransformer.superpoint_target import SuperPointTargetGenerator
 import sys
 import os
 
@@ -35,7 +37,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = build_dropout_layer(dropout)
 
     def forward(
-        self, input_q, input_k, input_v, key_weights=None, key_masks=None, attention_factors=None, attention_masks=None
+        self, input_q, input_k, input_v, key_weights=None, key_masks=None, attention_factors=None, attention_masks=None, gt_indices=None, gt_overlap=None,
     ):
         """Vanilla Self-attention forward propagation.
 
@@ -55,7 +57,10 @@ class MultiHeadAttention(nn.Module):
         """
         q = rearrange(self.proj_q(input_q), 'b n (h c) -> b h n c', h=self.num_heads)
         k = rearrange(self.proj_k(input_k), 'b m (h c) -> b h m c', h=self.num_heads)
-        v = rearrange(self.proj_v(input_v), 'b m (h c) -> b h m c', h=self.num_heads)
+        if input_v.ndim == 4:
+            v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
+        elif input_v.ndim == 3:
+            v = rearrange(self.proj_v(input_v), 'b m (h c) -> b h m c', h=self.num_heads)
 
         attention_scores = torch.einsum('bhnc,bhmc->bhnm', q, k) / self.d_model_per_head ** 0.5
         if attention_factors is not None:
@@ -69,9 +74,13 @@ class MultiHeadAttention(nn.Module):
         attention_scores = F.softmax(attention_scores, dim=-1)
         attention_scores = self.dropout(attention_scores)
 
-        hidden_states = torch.matmul(attention_scores, v)
-
-        hidden_states = rearrange(hidden_states, 'b h n c -> b n (h c)')
+        if input_v.ndim == 4:
+            attention_scores = attention_scores.unsqueeze(1)
+            hidden_states = torch.matmul(attention_scores, v)
+            hidden_states = rearrange(hidden_states, 'b a h n c -> b a n (h c)')
+        elif input_v.ndim == 3:
+            hidden_states = torch.matmul(attention_scores, v)
+            hidden_states = rearrange(hidden_states, 'b h n c -> b n (h c)')
 
         return hidden_states, attention_scores
 
@@ -125,6 +134,9 @@ class MultiHeadAttentionEQ(nn.Module):
         self.attn_r_positive = attn_r_positive # 'sq', 'abs', 'relu', 'sigmoid', None
         self.attn_r_positive_rot_supervise = attn_r_positive_rot_supervise
         self.num_correspondences = 256
+        self.dual_normalization = True
+        self.num_targets = 128
+        self.overlap_threshold = 0.1
         # self.attn_r_soft = False
         # self.attn_ra_soft = False
         self.attn_mode = attn_mode   # 'r_best' 'r_soft' 'a_best' 'a_soft'
@@ -144,7 +156,15 @@ class MultiHeadAttentionEQ(nn.Module):
         if self.attn_r_positive == 'leakyrelu' or self.attn_r_positive_rot_supervise == 'leakyrelu':
             self.leakyrelu = nn.LeakyReLU(0.1)
         if self.attn_r_positive == 'softplus' or self.attn_r_positive_rot_supervise == 'softplus':
-            self.softplus = nn.Softplus()
+            self.softplus = nn.Softplus(beta=1.0)
+
+        self.coarse_matching = SuperPointMatching(
+            self.num_correspondences, self.dual_normalization
+        )
+
+        self.coarse_target = SuperPointTargetGenerator(
+            self.num_targets, self.overlap_threshold
+        )
 
         self.init_anchors()
     def init_anchors(self):
@@ -224,7 +244,7 @@ class MultiHeadAttentionEQ(nn.Module):
             raise NotImplementedError(f'self.kanchor={self.kanchor} not implemented')
         return
 
-    def cross_anchor_attn_aa(self, q, k, input_q, input_k):
+    def cross_anchor_attn_aa(self, q, k, input_q, input_k, gt_indices=None, gt_overlap=None):
         '''q: bahnc, k: behmc -> 
         attention_scores: baehnm / brahnm / bahnm
         where: b: batch size; 
@@ -237,15 +257,26 @@ class MultiHeadAttentionEQ(nn.Module):
         n = q.shape[-2]
         m = k.shape[-2]
 
+        # print('q', q.amax(), q.amin(), q.mean())
+
         ####################
         ### normalization ##
         ####################
-        q_normalized = F.normalize(q, dim=-1) # normalize on the c dimension
-        k_normalized = F.normalize(k, dim=-1)
+        # q_normalized = F.normalize(q, dim=-1) # normalize on the c dimension
+        # k_normalized = F.normalize(k, dim=-1)
         # print('differences between q and k:', torch.norm(q - k))
+        # print('self.attn_mode', self.attn_mode)
         # print('differences between nomalized q and k:', torch.norm(q_normalized - k_normalized))
         # print('q_normalized', q_normalized.amax(), q_normalized.amin(), q_normalized.mean())
         # print('k_normalized', k_normalized.amax(), k_normalized.amin(), k_normalized.mean())
+
+        q_rearraged = rearrange(q, 'b a h n c -> b a h (n c)') # bahnc -> bah(nc) 
+        q_normalized_nc = F.normalize(q_rearraged, dim=-1)
+        q_normalized_nc = rearrange(q_normalized_nc, 'b a h (n c) -> b a h n c', n=n)
+
+        k_rearraged = rearrange(k, 'b a h m c -> b a h (m c)')
+        k_normalized_nc = F.normalize(k_rearraged, dim=-1)
+        k_normalized_nc = rearrange(k_normalized_nc, 'b a h (m c) -> b a h m c', m=m)
 
         ####################
         ### local attention
@@ -257,8 +288,81 @@ class MultiHeadAttentionEQ(nn.Module):
         else:
             attention_scores_ae = torch.einsum('bahnc,behmc->baehnm', q, k) \
                                 / self.d_model_per_head ** 0.5
-            attention_scores_ae_normalized = torch.einsum('bahnc,behmc->baehnm', q_normalized, k_normalized) \
-                                / self.d_model_per_head ** 0.5
+            # attention_scores_ae_normalized = torch.einsum('bahnc,behmc->baehnm', q_normalized, k_normalized) \
+            #                     / self.d_model_per_head ** 0.5
+            if self.attn_mode == 'a_soft' or self.attn_mode == 'a_best':
+                attention_scores_ae_rot_sup = torch.einsum('bahnc,behmc->baehnm', q_normalized_nc, k_normalized_nc) \
+                                    / self.d_model_per_head ** 0.5
+            elif self.attn_mode == 'r_soft' or self.attn_mode == 'r_best':
+                
+                attention_scores_ae_rot_sup = torch.einsum('bahnc,behmc->baehnm', q_normalized_nc, k_normalized_nc) \
+                                    / self.d_model_per_head ** 0.5
+                attention_scores_ae_rot_sup = rearrange(attention_scores_ae_rot_sup, 'b a e h n m -> b a e h (n m)') # baehnm -> baeh(nm)
+                attention_scores_ae_rot_sup = torch.amax(attention_scores_ae_rot_sup, dim=-1, keepdim=False) # baeh(nm)-> baeh
+                q_inv = torch.mean(q, dim=1, keepdim=False) # bahnc -> bhnc
+                q_inv = rearrange(q_inv, 'b h n c -> b n (h c)')[0] # bahnc -> nc
+                q_inv = F.normalize(q_inv, dim=-1)
+                
+                """
+                # pool on anchor dimension, equivariant to invariant for point matching, bahnc -> bhnc
+                q_inv = torch.mean(q, dim=1, keepdim=False) # bahnc -> bhnc
+                k_inv = torch.mean(k, dim=1, keepdim=False) # bahnc -> bhnc
+                # q_inv = torch.amax(q, dim=1, keepdim=False) # bahnc -> bhnc
+                # k_inv = torch.amax(k, dim=1, keepdim=False) # bahnc -> bhnc
+                # rearrange to match dimention requirement, bhnc -> nc
+                q_inv = rearrange(q_inv, 'b h n c -> b n (h c)')[0] # bahnc -> nc
+                k_inv = rearrange(k_inv, 'b h m c -> b m (h c)')[0] # bahmc -> mc
+                # normalize on dimension c
+                q_inv = F.normalize(q_inv, dim=-1)
+                k_inv = F.normalize(k_inv, dim=-1)
+
+                # TODO: merge the following two blocks
+                # find point matching using features
+                # print('====> coarse matching starts in transformer <====')
+                ref_corr_indices_from_feat, src_corr_indices_from_feat, node_corr_scores = self.coarse_matching(
+                        q_inv, k_inv, None, None
+                    )
+                # print('====> coarse matching ends in transformer <====')
+                
+                # check indices
+                # print('corr_indices from feat\n', torch.stack((ref_corr_indices_from_feat[:10], src_corr_indices_from_feat[:10]), dim=1))
+                    
+                # matching points using indices
+                q_matching_feat = q[:, :, :, ref_corr_indices_from_feat, :] # bahnc -> bahn'c
+                k_matching_feat = k[:, :, :, src_corr_indices_from_feat, :] # behmc -> behn'c, find the best matching point
+                # normalize over nc
+                temp_q_matching_feat = F.normalize(rearrange(q_matching_feat, 'b a h n c -> b a h (n c)'), dim=-1)
+                q_matching_feat = rearrange(temp_q_matching_feat, 'b a h (n c) -> b a h n c', n=ref_corr_indices_from_feat.shape[0])
+                temp_k_matching_feat = F.normalize(rearrange(k_matching_feat, 'b a h m c -> b a h (m c)'), dim=-1)
+                k_matching_feat = rearrange(temp_k_matching_feat, 'b a h (m c) -> b a h m c', m=src_corr_indices_from_feat.shape[0])                
+                # calculate attention matrix
+                attention_scores_ae_rot_sup = torch.einsum('bahnc,behnc->baeh', q_matching_feat, k_matching_feat)
+                if not self.attn_r_multihead:
+                    attention_scores_ae_rot_sup_temp = attention_scores_ae_rot_sup.mean(3) # baenm
+                    # print('attention matrix from feature matching\n', attention_scores_ae_rot_sup_temp)
+
+                # during training, use ground truth indices for point matching
+                if (gt_indices is not None) and (gt_overlap is not None):
+                    # Random select ground truth node correspondences during training
+                    ref_node_corr_indices, src_node_corr_indices, node_corr_scores = self.coarse_target(
+                        gt_indices, gt_overlap
+                    )
+                    # matching points using indices
+                    q_matching = q[:, :, :, ref_node_corr_indices, :] # bahnc -> bahn'c
+                    k_matching = k[:, :, :, src_node_corr_indices, :] # behmc -> behn'c, find the best matching point
+                    # normalize over nc
+                    temp_q_matching = F.normalize(rearrange(q_matching, 'b a h n c -> b a h (n c)'), dim=-1)
+                    q_matching = rearrange(temp_q_matching, 'b a h (n c) -> b a h n c', n=ref_node_corr_indices.shape[0])
+                    temp_k_matching = F.normalize(rearrange(k_matching, 'b a h m c -> b a h (m c)'), dim=-1)
+                    k_matching = rearrange(temp_k_matching, 'b a h (m c) -> b a h m c', m=src_node_corr_indices.shape[0])
+                    # check indices
+                    # print('corr_indices', len(ref_node_corr_indices), len(src_node_corr_indices))
+                    # print('corr_indices\n', torch.stack((ref_node_corr_indices[:10], src_node_corr_indices[:10]), dim=1))
+                    # calculate attention matrix
+                    attention_scores_ae_rot_sup = torch.einsum('bahnc,behnc->baeh', q_matching, k_matching)
+                """
+            else:
+                raise NotImplementedError(f'self.attn_mode={self.attn_mode} not implemented')
             
         # print('local attention_scores_ae', attention_scores_ae.shape)
         
@@ -267,6 +371,8 @@ class MultiHeadAttentionEQ(nn.Module):
 
         attention_scores_ae_raw = attention_scores_ae   # local attention
         # attention_scores_ae = torch.sigmoid(attention_scores_ae)   # 0-1
+        # print('local', attention_scores_ae_rot_sup.amax(), attention_scores_ae_rot_sup.amin(), attention_scores_ae_rot_sup.mean())
+
 
         ####################
         ### global attention
@@ -274,17 +380,17 @@ class MultiHeadAttentionEQ(nn.Module):
         if not self.attn_r_multihead:
             ### average over attention heads
             attention_scores_ae = attention_scores_ae.mean(3) # baenm
-            attention_scores_ae_normalized = attention_scores_ae_normalized.mean(3) # baenm
-        ### make the attention value non-negative for rotation/anchor normalization
+            # attention_scores_ae_normalized = attention_scores_ae_normalized.mean(3) # baenm
+            attention_scores_ae_rot_sup = attention_scores_ae_rot_sup.mean(3) # baenm
+
+
+        ## make the attention value non-negative for rotation/anchor normalization
         if self.attn_r_positive == 'sq':
             attention_scores_ae = attention_scores_ae**2
-            # attention_scores_ae_normalized = attention_scores_ae_normalized**2
         elif self.attn_r_positive == 'abs':
             attention_scores_ae = torch.abs(attention_scores_ae)
-            # attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'relu':
             attention_scores_ae = F.relu(attention_scores_ae)
-            # attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
         elif self.attn_r_positive == 'sigmoid':
             attention_scores_ae = F.sigmoid(attention_scores_ae)
         elif self.attn_r_positive == 'leadkyrelu':
@@ -293,29 +399,36 @@ class MultiHeadAttentionEQ(nn.Module):
             attention_scores_ae = self.softplus(attention_scores_ae)
 
 
-        if self.attn_r_positive_rot_supervise == 'sq':
-            attention_scores_ae_normalized = attention_scores_ae_normalized**2
-            # attention_scores_ae_normalized = attention_scores_ae_normalized**2
+        if self.attn_r_positive_rot_supervise is None:
+            pass
+        elif self.attn_r_positive_rot_supervise == 'sq':
+            attention_scores_ae_rot_sup = attention_scores_ae_rot_sup**2
         elif self.attn_r_positive_rot_supervise == 'abs':
-            attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
-            # attention_scores_ae_normalized = torch.abs(attention_scores_ae_normalized)
+            attention_scores_ae_rot_sup = torch.abs(attention_scores_ae_rot_sup)
         elif self.attn_r_positive_rot_supervise == 'relu':
-            attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
-            # attention_scores_ae_normalized = F.relu(attention_scores_ae_normalized)
+            attention_scores_ae_rot_sup = F.relu(attention_scores_ae_rot_sup)
         elif self.attn_r_positive_rot_supervise == 'sigmoid':
-            attention_scores_ae_normalized = F.sigmoid(attention_scores_ae_normalized)
+            attention_scores_ae_rot_sup = F.sigmoid(attention_scores_ae_rot_sup)
         elif self.attn_r_positive_rot_supervise == 'leadkyrelu':
-            attention_scores_ae_normalized = self.leakyrelu(attention_scores_ae_normalized)
+            attention_scores_ae_rot_sup = self.leakyrelu(attention_scores_ae_rot_sup)
         elif self.attn_r_positive_rot_supervise == 'softplus':
-            attention_scores_ae_normalized = self.softplus(attention_scores_ae_normalized)
+            attention_scores_ae_rot_sup = self.softplus(attention_scores_ae_rot_sup)
+        elif self.attn_r_positive_rot_supervise == 'minus':
+            attention_scores_ae_rot_sup = (attention_scores_ae_rot_sup + 1) / 2
         
+        
+        # print('norm', attention_scores_ae_rot_sup.amax(), attention_scores_ae_rot_sup.amin(), attention_scores_ae_rot_sup.mean())
 
         # print('global attention_scores_ae', attention_scores_ae.shape)
 
         ### pool over all points
         if self.attn_r_summ == 'mean':
             attn_ae = attention_scores_ae.mean([-2,-1])   # bae(h)
-            attn_ae_normalized = attention_scores_ae_normalized.mean([-2,-1])
+            # attn_ae_normalized = attention_scores_ae_normalized.mean([-2,-1])
+            if self.attn_mode == 'a_soft' or self.attn_mode == 'a_best':
+                attn_ae_rot_sup = attention_scores_ae_rot_sup.mean([-2,-1])
+            elif self.attn_mode == 'r_soft' or self.attn_mode == 'r_best':
+                attn_ae_rot_sup = attention_scores_ae_rot_sup
         elif self.attn_r_summ == 'double_norm':
             ref_matching_scores = attention_scores_ae / attention_scores_ae.sum(dim=-1, keepdim=True)
             src_matching_scores = attention_scores_ae / attention_scores_ae.sum(dim=-2, keepdim=True)
@@ -324,14 +437,27 @@ class MultiHeadAttentionEQ(nn.Module):
             corr_scores, corr_indices = matching_scores.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
             attn_ae = corr_scores.mean(-1)          # bae(h)
 
-            ref_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-1, keepdim=True)
-            src_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-2, keepdim=True)
-            matching_scores_normalized = ref_matching_scores_normalized * src_matching_scores_normalized
-            num_correspondences_normalized = min(self.num_correspondences, matching_scores_normalized.numel())
-            corr_scores_normalized, corr_indices_normalized = matching_scores_normalized.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
-            attention_scores_ae_normalized = corr_scores_normalized.mean(-1)          # bae(h)
+            # ref_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-1, keepdim=True)
+            # src_matching_scores_normalized = attn_ae_normalized / attn_ae_normalized.sum(dim=-2, keepdim=True)
+            # matching_scores_normalized = ref_matching_scores_normalized * src_matching_scores_normalized
+            # num_correspondences_normalized = min(self.num_correspondences, matching_scores_normalized.numel())
+            # corr_scores_normalized, corr_indices_normalized = matching_scores_normalized.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
+            # attn_ae_normalized = corr_scores_normalized.mean(-1)          # bae(h)
+
+            ref_matching_scores_rot_sup = attention_scores_ae_rot_sup / attention_scores_ae_rot_sup.sum(dim=-1, keepdim=True)
+            src_matching_scores_rot_sup = attention_scores_ae_rot_sup / attention_scores_ae_rot_sup.sum(dim=-2, keepdim=True)
+            matching_scores_rot_sup = ref_matching_scores_rot_sup * src_matching_scores_rot_sup
+            num_correspondences_rot_sup = min(self.num_correspondences, matching_scores_rot_sup.numel())
+            corr_scores_rot_sup, corr_indices_rot_sup = matching_scores_rot_sup.flatten(-2).topk(k=num_correspondences, largest=True)    # bae(h)k
+            attn_ae_rot_sup = corr_scores_rot_sup.mean(-1)          # bae(h)
         else:
             raise NotImplementedError(f'attn_r_summ ={self.attn_r_summ} not recognized')
+        
+        # print('attn_ae_rot_sup', attn_ae_rot_sup)
+
+        # attn_ae_rot_sup = F.sigmoid(attn_ae_rot_sup)
+        # print('sigmoid', attn_ae_rot_sup)
+
         
         # print('self.attn_mode', self.attn_mode, 'attn_ae_normalized', attn_ae_normalized)
 
@@ -448,7 +574,7 @@ class MultiHeadAttentionEQ(nn.Module):
                     attention_scores = attention_scores_ae_raw.flatten(0,2)[idx]   # baehnm -> barhnm
                     attention_scores = attention_scores.transpose(1,2)             # brahnm
 
-            return attention_scores, [attn_r, attn_ae_normalized]
+            return attention_scores, [attn_r, attn_ae_rot_sup, q_inv]
             ### attention_scores: local attention matrix; attn_ae: global rotation attention matrix
         elif self.attn_mode == 'r_best':
             ### pick the optimal rotation in key and permute key anchors accordingly
@@ -623,7 +749,7 @@ class MultiHeadAttentionEQ(nn.Module):
         return attention_scores
 
     def forward(
-        self, input_q, input_k, input_v, key_weights=None, key_masks=None, attention_factors=None, attention_masks=None
+        self, input_q, input_k, input_v, key_weights=None, key_masks=None, attention_factors=None, attention_masks=None, gt_indices=None, gt_overlap=None
     ):
         """Vanilla Self-attention forward propagation.
 
@@ -648,11 +774,15 @@ class MultiHeadAttentionEQ(nn.Module):
         q = rearrange(self.proj_q(input_q), 'b a n (h c) -> b a h n c', h=self.num_heads)
         k = rearrange(self.proj_k(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
         v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
+
+        # share linear layer, not recomended, just testing rotation supervision
+        # k = rearrange(self.proj_q(input_k), 'b a m (h c) -> b a h m c', h=self.num_heads)
+        # v = rearrange(self.proj_q(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
         q_rearrange = rearrange(input_q, 'b a n (h c) -> b a h n c', h=self.num_heads)
         k_rearrange = rearrange(input_k, 'b a m (h c) -> b a h m c', h=self.num_heads)
-        # v = rearrange(self.proj_v(input_v), 'b a m (h c) -> b a h m c', h=self.num_heads)
 
-        attention_scores, attn_w = self.cross_anchor_attn_aa(q, k, q_rearrange, k_rearrange)     
+
+        attention_scores, attn_w = self.cross_anchor_attn_aa(q, k, q_rearrange, k_rearrange, gt_indices, gt_overlap)     
         ### local and global attention matrix, of the same shape: baehnm / brahnm / bahnm
         
         if self.attn_mode in ['a_best', 'r_best']:
@@ -708,7 +838,7 @@ class MultiHeadAttentionEQ(nn.Module):
             hidden_states = torch.einsum('bahnm,bahmc->bahnc', attention_scores, v_permute)
         elif self.attn_mode == 'r_soft':
             ### brahnm, brahnm, behmc
-            attn_w, attn_matrix = attn_w
+            attn_w, attn_matrix, feat_m = attn_w
             attention_scores = attention_scores * attn_w
             v_permute = v[:, self.trace_idx_ori]    # brahmc
             # print('v_permute_0000', v_permute[..., 0,0,0,0])
@@ -735,7 +865,7 @@ class MultiHeadAttentionEQ(nn.Module):
         if self.attn_mode in ['a_best', 'r_best']:
             return hidden_states, [attention_scores, attn_idx]
         elif self.attn_mode in ['r_soft']:
-            return hidden_states, [attention_scores, attn_w, attn_matrix]
+            return hidden_states, [attention_scores, attn_w, attn_matrix, feat_m]
         else:
             return hidden_states, [attention_scores, attn_w]
 
@@ -755,19 +885,26 @@ class AttentionLayer(nn.Module):
         self,
         input_states,
         memory_states,
+        value_states=None,
         memory_weights=None,
         memory_masks=None,
         attention_factors=None,
         attention_masks=None,
+        gt_indices=None,
+        gt_overlap=None,
     ):
+        if value_states is None:
+            value_states = memory_states
         hidden_states, attention_scores = self.attention(
-            input_states,
-            memory_states,
-            memory_states,
+            input_states, # q
+            memory_states, # k
+            value_states, # v
             key_weights=memory_weights,
             key_masks=memory_masks,
             attention_factors=attention_factors,
             attention_masks=attention_masks,
+            gt_indices=gt_indices,
+            gt_overlap=gt_overlap,
         )
         hidden_states = self.linear(hidden_states)
         hidden_states = self.dropout(hidden_states)
@@ -786,18 +923,24 @@ class TransformerLayer(nn.Module):
         self,
         input_states,
         memory_states,
+        value_states=None,
         memory_weights=None,
         memory_masks=None,
         attention_factors=None,
         attention_masks=None,
+        gt_indices=None,
+        gt_overlap=None,
     ):
         hidden_states, attention_scores = self.attention(
             input_states,
             memory_states,
+            value_states=value_states,
             memory_weights=memory_weights,
             memory_masks=memory_masks,
             attention_factors=attention_factors,
             attention_masks=attention_masks,
+            gt_indices=gt_indices,
+            gt_overlap=gt_overlap,
         )
         output_states = self.output(hidden_states)
         return output_states, attention_scores

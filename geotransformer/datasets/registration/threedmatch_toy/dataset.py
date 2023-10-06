@@ -57,7 +57,7 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
             #     self.metadata_list =  self.metadata_list[:1]
             # elif subset == 'val':
             #     self.metadata_list =  self.metadata_list[:1]
-            self.metadata_list =  self.metadata_list[:1]
+            self.metadata_list =  self.metadata_list[:100]
 
     def __len__(self):
         return len(self.metadata_list)
@@ -97,6 +97,9 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
         # get point cloud (ref and src are the same in this toy sample dataset!)
         ref_points = self._load_point_cloud(metadata['pcd0'])
         src_points = self._load_point_cloud(metadata['pcd0'])
+        if ref_points.shape[0] > 10000:
+            ref_points = ref_points[:20000, :]
+            src_points = src_points[:20000, :]
 
         ref_points, src_points, rotation, translation = self._rotate_point_cloud(
                 ref_points, src_points, rotation, translation

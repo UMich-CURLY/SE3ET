@@ -9,10 +9,10 @@ from tqdm import tqdm
 def main():
     for i in range(11):
         seq_id = '{:02d}'.format(i)
-        file_names = glob.glob(osp.join('sequences', seq_id, 'velodyne', '*.bin'))
+        file_names = glob.glob(osp.join('/media/cel/T7/data/kitti/sequences', seq_id, 'velodyne', '*.bin'))
         for file_name in tqdm(file_names):
             frame = file_name.split('/')[-1][:-4]
-            new_file_name = osp.join('downsampled', seq_id, frame + '.npy')
+            new_file_name = osp.join('/media/cel/T7/data/kitti/downsampled', seq_id, frame + '.npy')
             points = np.fromfile(file_name, dtype=np.float32).reshape(-1, 4)
             points = points[:, :3]
             pcd = o3d.geometry.PointCloud()

@@ -206,28 +206,78 @@ class RPEConditionalTransformer(nn.Module):
             feats1 = feats1_inv
         return feats0, feats1
 
-    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, equiv_embed0=None, equiv_embed1=None):
+    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, gt_indices=None, gt_overlap=None, equiv_embed0=None, equiv_embed1=None):
         attention_scores = []
         attn_matrix0 = None
         attn_matrix1 = None
+        feats0_eq = None
+        feats1_eq = None
         for i, block in enumerate(self.blocks):
             if 'self' in block:
-                feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
-                feats1, scores1 = self.layers[i](feats1, feats1, embeddings1, memory_masks=masks1, equiv_states=equiv_embed1)
+                if (feats0_eq is not None) and (feats1_eq is not None):
+                    ### not the first self_eq block, use the equivariant features from the last cross block
+                    feats0, scores0 = self.layers[i](feats0_eq, feats0_eq, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
+                    feats1, scores1 = self.layers[i](feats1_eq, feats1_eq, embeddings1, memory_masks=masks1, equiv_states=equiv_embed1)
+                else:
+                    ### the first self_eq block, use the features from the backbone
+                    feats0, scores0 = self.layers[i](feats0, feats0, embeddings0, memory_masks=masks0, equiv_states=equiv_embed0)
+                    feats1, scores1 = self.layers[i](feats1, feats1, embeddings1, memory_masks=masks1, equiv_states=equiv_embed1)
+                if (block == 'self_eq') and (self.blocks[i+1] == 'cross'):
+                    ### if the next block is cross, need to pool to invariant features
+                    feats0_eq = feats0
+                    feats1_eq = feats1
+                    feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                    feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
             else:
                 assert 'cross' in block, block
                 if self.parallel:
-                    new_feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1)
-                    new_feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0)
+                    ### parallel=Ture doesn't converge when testing with 10 blocks, need to test again with new config
+                    new_feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                    new_feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
                     feats0 = new_feats0
                     feats1 = new_feats1
                 else:
-                    feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1)
-                    feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0)
+                    if (block == 'cross') and (i+1 < len(self.blocks)):  
+                        if (self.blocks[i+1] == 'self_eq'):
+                            ### current block is cross and next block is self_eq, need to obtain equivariant features
+                            feats0_eq, scores0 = self.layers[i](feats0, feats1, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            feats1_eq, scores1 = self.layers[i](feats1, feats0, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        else:
+                            feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                    elif (block == 'cross') and (i+1 == len(self.blocks)) and self.return_attention_weights:
+                        ### the last cross block but we are doing rotation supervision, 
+                        ### so we need to obtain both equivariant features and invariant features
+                        feats0_eq, scores0 = self.layers[i](feats0, feats1, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                        feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats1_eq, scores1 = self.layers[i](feats1, feats0, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                        feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        ref_feat_m = feats0_eq
+                        src_feat_m = feats1_eq
+                    elif ('r_soft' in block) and (i+1 == len(self.blocks)) and self.return_attention_weights:
+                        ### the last cross block is equivariant cross_r and we are doing rotation supervision
+                        ### so we need to obtain both equivariant features and invariant features
+                        feats0_eq, scores0 = self.layers[i](feats0_eq, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                        feats1_eq, scores1 = self.layers[i](feats1_eq, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                        feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        ref_feat_m = feats0_eq
+                        src_feat_m = feats1_eq
+                    else:
+                        ### normal cross block or the last cross block when no rotation supervision                       
+                        feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                        feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
                 if 'r_soft' in block or 'r_best' in block:
                     if 'r_soft' in block:
-                        scores0, attn_w0, attn_matrix0 = scores0
-                        scores1, attn_w1, attn_matrix1 = scores1
+                        # scores0, attn_w0, attn_matrix0, ref_feat_m = scores0
+                        # scores1, attn_w1, attn_matrix1, src_feat_m = scores1
+                        scores0, attn_w0, attn_matrix0, _ = scores0
+                        scores1, attn_w1, attn_matrix1, _ = scores1
+                        if (i+1 < len(self.blocks)):
+                            ref_feat_m = feats0
+                            src_feat_m = feats1
                     else:
                         scores0, attn_w0 = scores0  # , v_permute1
                         scores1, attn_w1 = scores1  # , v_permute0
@@ -242,7 +292,7 @@ class RPEConditionalTransformer(nn.Module):
         if self.return_attention_scores:
             return feats0, feats1, attention_scores#, v_permute0, v_permute1
         elif self.return_attention_weights:
-            return feats0, feats1, attn_matrix0, attn_matrix1
+            return feats0, feats1, ref_feat_m, src_feat_m, attn_matrix0, attn_matrix1
         else:
             return feats0, feats1#, v_permute0, v_permute1
 

@@ -14,8 +14,8 @@ class SuperPointMatching(nn.Module):
         r"""Extract superpoint correspondences.
 
         Args:
-            ref_feats (Tensor): features of the superpoints in reference point cloud. (B, N, C), equivariant version: (B, A, N, C)
-            src_feats (Tensor): features of the superpoints in source point cloud. (B, N, C), equivariant version: (B, A, N, C)
+            ref_feats (Tensor): features of the superpoints in reference point cloud. (N, C)
+            src_feats (Tensor): features of the superpoints in source point cloud. (N, C)
             ref_masks (BoolTensor=None): masks of the superpoints in reference point cloud (False if empty).
             src_masks (BoolTensor=None): masks of the superpoints in source point cloud (False if empty).
 
@@ -34,17 +34,22 @@ class SuperPointMatching(nn.Module):
         ref_feats = ref_feats[ref_indices]
         src_feats = src_feats[src_indices]
         # select top-k proposals
-        matching_scores = torch.exp(-pairwise_distance(ref_feats, src_feats, normalized=True))
+        matching_scores = torch.exp(-pairwise_distance(ref_feats, src_feats, normalized=True)) # nm
+        # print(matching_scores[:5,:5])
         if self.dual_normalization:
             ref_matching_scores = matching_scores / matching_scores.sum(dim=1, keepdim=True)
             src_matching_scores = matching_scores / matching_scores.sum(dim=0, keepdim=True)
             matching_scores = ref_matching_scores * src_matching_scores
         num_correspondences = min(self.num_correspondences, matching_scores.numel())
         corr_scores, corr_indices = matching_scores.view(-1).topk(k=num_correspondences, largest=True)
+        # print('corr_indices', corr_indices[:10])
+        # print('corr_indices', corr_indices)
         ref_sel_indices = corr_indices // matching_scores.shape[1]
         src_sel_indices = corr_indices % matching_scores.shape[1]
         # recover original indices
         ref_corr_indices = ref_indices[ref_sel_indices]
         src_corr_indices = src_indices[src_sel_indices]
+        # print('ref_corr_indices', ref_corr_indices[:10])
+        # print('src_corr_indices', src_corr_indices[:10])
 
         return ref_corr_indices, src_corr_indices, corr_scores

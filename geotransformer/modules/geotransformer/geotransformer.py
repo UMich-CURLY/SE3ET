@@ -204,6 +204,8 @@ class GeometricTransformer(nn.Module):
         src_feats,
         ref_masks=None,
         src_masks=None,
+        gt_indices=None,
+        gt_overlap=None,
     ):
         r"""Geometric Transformer
 
@@ -219,6 +221,7 @@ class GeometricTransformer(nn.Module):
             ref_feats: torch.Tensor (B, N, C)
             src_feats: torch.Tensor (B, M, C)
         """
+
         if self.n_level_equiv == 0:
             ref_embeddings = self.embedding(ref_points)
             src_embeddings = self.embedding(src_points)
@@ -239,6 +242,8 @@ class GeometricTransformer(nn.Module):
                 src_embeddings,
                 masks0=ref_masks,
                 masks1=src_masks,
+                gt_indices=gt_indices,
+                gt_overlap=gt_overlap,
             )
 
             ref_feats = self.out_proj(ref_feats)
@@ -251,13 +256,15 @@ class GeometricTransformer(nn.Module):
             src_feats = self.in_proj(src_feats)
 
             if self.supervise_rotation:
-                ref_feats, src_feats, attn_matrix0, attn_matrix1 = self.transformer(
+                ref_feats, src_feats, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1 = self.transformer(
                     ref_feats,
                     src_feats,
                     ref_embeddings,
                     src_embeddings,
                     masks0=ref_masks,
                     masks1=src_masks,
+                    gt_indices=gt_indices,
+                    gt_overlap=gt_overlap,
                     equiv_embed0=ref_eq_embeddings,
                     equiv_embed1=src_eq_embeddings,
                 )
@@ -269,6 +276,8 @@ class GeometricTransformer(nn.Module):
                     src_embeddings,
                     masks0=ref_masks,
                     masks1=src_masks,
+                    gt_indices=gt_indices,
+                    gt_overlap=gt_overlap,
                     equiv_embed0=ref_eq_embeddings,
                     equiv_embed1=src_eq_embeddings,
                 )
@@ -277,6 +286,6 @@ class GeometricTransformer(nn.Module):
             src_feats = self.out_proj(src_feats)
         
         if self.supervise_rotation:
-            return ref_feats, src_feats, attn_matrix0, attn_matrix1
+            return ref_feats, src_feats, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1
         else:
-            return ref_feats, src_feats, None, None
+            return ref_feats, src_feats, None, None, None, None
