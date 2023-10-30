@@ -135,6 +135,7 @@ class GeometricTransformer(nn.Module):
         dropout=None,
         activation_fn='ReLU',
         supervise_rotation=False,
+        anchor_matching=False,
         reduction_a='max',
         na=None,
         attn_r_positive='sq',
@@ -165,6 +166,7 @@ class GeometricTransformer(nn.Module):
         self.in_proj = nn.Linear(input_dim, hidden_dim)
         self.na = na
         self.supervise_rotation = supervise_rotation
+        self.anchor_matching = anchor_matching
         if self.na is None:
             # transformer in GeoTransformer
             self.transformer = RPEConditionalTransformer(
@@ -176,6 +178,18 @@ class GeometricTransformer(nn.Module):
                 self.transformer = RPEConditionalTransformer(
                     blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
                     return_attention_weights=True,
+                    na=na,
+                    attn_r_positive=attn_r_positive,
+                    attn_r_positive_rot_supervise=attn_r_positive_rot_supervise,
+                    align_mode=align_mode,
+                    alternative_impl=alternative_impl,
+                    d_equiv_embed=self.d_equiv_embed,
+                )
+            elif self.anchor_matching:
+                # transformer that handle equivariant features and return attention weight for rotation supervision
+                self.transformer = RPEConditionalTransformer(
+                    blocks, hidden_dim, num_heads, dropout=dropout, activation_fn=activation_fn,
+                    anchor_matching=True,
                     na=na,
                     attn_r_positive=attn_r_positive,
                     attn_r_positive_rot_supervise=attn_r_positive_rot_supervise,
@@ -221,6 +235,10 @@ class GeometricTransformer(nn.Module):
             ref_feats: torch.Tensor (B, N, C)
             src_feats: torch.Tensor (B, M, C)
         """
+        ref_feats_m = None
+        src_feats_m = None
+        attn_matrix0 = None
+        ttn_matrix1 = None        
 
         if self.n_level_equiv == 0:
             ref_embeddings = self.embedding(ref_points)
@@ -255,7 +273,7 @@ class GeometricTransformer(nn.Module):
             ref_feats = self.in_proj(ref_feats)
             src_feats = self.in_proj(src_feats)
 
-            if self.supervise_rotation:
+            if self.supervise_rotation or self.anchor_matching:
                 ref_feats, src_feats, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1 = self.transformer(
                     ref_feats,
                     src_feats,
@@ -285,7 +303,4 @@ class GeometricTransformer(nn.Module):
             ref_feats = self.out_proj(ref_feats) # B, N, C
             src_feats = self.out_proj(src_feats)
         
-        if self.supervise_rotation:
-            return ref_feats, src_feats, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1
-        else:
-            return ref_feats, src_feats, None, None, None, None
+        return ref_feats, src_feats, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1

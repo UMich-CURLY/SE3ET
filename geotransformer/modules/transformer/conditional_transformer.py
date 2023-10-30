@@ -102,6 +102,7 @@ class RPEConditionalTransformer(nn.Module):
         activation_fn='ReLU',
         return_attention_scores=False,
         return_attention_weights=False,
+        anchor_matching=False,
         parallel=False,
         na=4,
         attn_r_positive='sq',
@@ -130,6 +131,7 @@ class RPEConditionalTransformer(nn.Module):
             self.rotcompress = RotCompressOutput(d_model, dropout=dropout, activation_fn=activation_fn, na=na, dual_align=align_mode=='dual_early')
         self.return_attention_scores = return_attention_scores
         self.return_attention_weights = return_attention_weights
+        self.anchor_matching = anchor_matching
         self.parallel = parallel
 
     def eq2inv_best(self, feats0, feats1, attn_w0, attn_w1, current_layer):
@@ -226,8 +228,10 @@ class RPEConditionalTransformer(nn.Module):
                     ### if the next block is cross, need to pool to invariant features
                     feats0_eq = feats0
                     feats1_eq = feats1
-                    feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                    feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                    # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                    # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                    feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
+                    feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
             else:
                 assert 'cross' in block, block
                 if self.parallel:
@@ -236,24 +240,28 @@ class RPEConditionalTransformer(nn.Module):
                     new_feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
                     feats0 = new_feats0
                     feats1 = new_feats1
+                    ### TODO: add self_eq with cross mode for parallel
                 else:
                     if (block == 'cross') and (i+1 < len(self.blocks)):  
                         if (self.blocks[i+1] == 'self_eq'):
                             ### current block is cross and next block is self_eq, need to obtain equivariant features
                             feats0_eq, scores0 = self.layers[i](feats0, feats1, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                            feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
                             feats1_eq, scores1 = self.layers[i](feats1, feats0, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                            feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
                         else:
                             feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
                             feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                    elif (block == 'cross') and (i+1 == len(self.blocks)) and self.return_attention_weights:
-                        ### the last cross block but we are doing rotation supervision, 
-                        ### so we need to obtain both equivariant features and invariant features
+                    elif (block == 'cross') and (i+1 == len(self.blocks)):
+                        ### the last cross block, we need to obtain both equivariant features and invariant features
                         feats0_eq, scores0 = self.layers[i](feats0, feats1, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                        feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
                         feats1_eq, scores1 = self.layers[i](feats1, feats0, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                        feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
                         ref_feat_m = feats0_eq
                         src_feat_m = feats1_eq
                     elif ('r_soft' in block) and (i+1 == len(self.blocks)) and self.return_attention_weights:
@@ -261,8 +269,10 @@ class RPEConditionalTransformer(nn.Module):
                         ### so we need to obtain both equivariant features and invariant features
                         feats0_eq, scores0 = self.layers[i](feats0_eq, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
                         feats1_eq, scores1 = self.layers[i](feats1_eq, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                        feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                        feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
+                        feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
                         ref_feat_m = feats0_eq
                         src_feat_m = feats1_eq
                     else:
@@ -291,7 +301,7 @@ class RPEConditionalTransformer(nn.Module):
                 attention_scores.append([scores0, scores1])
         if self.return_attention_scores:
             return feats0, feats1, attention_scores#, v_permute0, v_permute1
-        elif self.return_attention_weights:
+        elif self.return_attention_weights or self.anchor_matching:
             return feats0, feats1, ref_feat_m, src_feat_m, attn_matrix0, attn_matrix1
         else:
             return feats0, feats1#, v_permute0, v_permute1
