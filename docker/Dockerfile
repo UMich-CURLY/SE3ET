@@ -28,7 +28,6 @@ RUN pip install numpy
 RUN pip install torch
 RUN pip install torchvision
 RUN pip install scikit-image
-RUN pip install scikit-learn
 RUN pip install open3d
 RUN pip install tqdm
 RUN pip install trimesh==3.2.0

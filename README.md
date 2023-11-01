@@ -11,11 +11,20 @@ We modify the PyTorch implementation of GeoTransformer:
 
 Please use the following command for installation.
 
-Build docker environment
+Build docker environment or conda environment
+- docker
 ```
 cd docker
 docker build --tag umcurly/geotransformer .
 bash build_docker_container.bash [container_name]
+```
+- conda
+```
+conda create -n se3et python==3.8
+conda activate se3et
+pip install torch==1.7.1+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+pip install -r requirements.txt
+
 ```
 Build extension package for GeoTransformer (might need root access)
 ```
