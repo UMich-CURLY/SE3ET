@@ -43,6 +43,7 @@ class GeoTransformer(nn.Module):
             supervise_rotation=cfg.geotransformer.supervise_rotation,
             reduction_a=cfg.geotransformer.reduction_a,
             na=cfg.epn.kanchor,
+            attn_r_positive=cfg.geotransformer.attn_r_positive,
             align_mode=cfg.geotransformer.align_mode,
             alternative_impl=cfg.geotransformer.alternative_impl,
             n_level_equiv=cfg.geotransformer.n_level_equiv,
