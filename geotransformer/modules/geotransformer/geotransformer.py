@@ -238,7 +238,7 @@ class GeometricTransformer(nn.Module):
         ref_feats_m = None
         src_feats_m = None
         attn_matrix0 = None
-        ttn_matrix1 = None        
+        attn_matrix1 = None        
 
         if self.n_level_equiv == 0:
             ref_embeddings = self.embedding(ref_points)
