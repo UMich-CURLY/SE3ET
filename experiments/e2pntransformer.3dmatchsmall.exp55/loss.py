@@ -112,7 +112,7 @@ class RotationMatchingLoss(nn.Module):
             self.trace_idx_ori, _ = fr.get_relativeV_index(vRs, vs)
         else:
             raise NotImplementedError(f"kanchor={self.na} is not implemented in the RotationMatchingLoss()")
-        pos_weight = 3 * torch.ones((self.na, self.na)).to(self.device)
+        pos_weight = (self.na - 1) * torch.ones((self.na, self.na)).to(self.device)
         self.criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     
     def forward(self, output_dict, data_dict):
@@ -147,10 +147,10 @@ class RotationMatchingLoss(nn.Module):
         # print('index1', index1)
 
         # contruct ground true label matrix
-        src = torch.ones((4, 1)).to(self.device)
-        target0 = torch.zeros(4, 4, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
+        src = torch.ones((self.na, 1)).to(self.device)
+        target0 = torch.zeros(self.na, self.na, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
         # print('target0\n', target0)
-        target1 = torch.zeros(4, 4, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
+        target1 = torch.zeros(self.na, self.na, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
         # print('target1\n', target1)
 
         # attn_w0 P0 = P1, attn_w1 P1 = P0

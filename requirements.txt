@@ -1,4 +1,4 @@
-numpy
+numpy==1.23.1
 scipy
 tqdm
 coloredlogs
@@ -17,3 +17,4 @@ colour
 yacs
 e3nn
 pytorch_memlab
+networkx

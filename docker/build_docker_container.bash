@@ -16,4 +16,4 @@ docker run -it --net=host --shm-size 8G --gpus all  \
   --device=/dev/dri:/dev/dri \
   --name=${container_name} \
   --security-opt seccomp=unconfined \
-  umcurly/geotransformer:latest
+  umcurly/se3et:latest

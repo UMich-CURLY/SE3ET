@@ -15,6 +15,7 @@ from geotransformer.modules.geotransformer import (
 from geotransformer.modules.transformer.rotation_supervision import RotationAttentionLayer
 from geotransformer.modules.transformer.permutation_invariant import PermutationInvariantLayer
 from backbone import E2PN
+from einops import rearrange
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
@@ -248,8 +249,25 @@ class GeoTransformer(nn.Module):
             output_dict['estimated_transform'] = estimated_transform
 
         
-        # 10. Supervise Rotation
-        if self.transformer.supervise_rotation:
+        # 10. Inference Rotation
+        with torch.no_grad():
+            print('ref_feats_m', ref_feats_m.shape)
+            ref_matching = ref_feats_m[:, :, ref_node_corr_indices, :] # banc -> ban'c
+            src_matching = src_feats_m[:, :, src_node_corr_indices, :] # bemc -> ben'c, find the best matching point
+            print('ref_matching', ref_matching.shape)
+
+            # normalize over nc
+            temp_ref_matching = F.normalize(rearrange(ref_matching, 'b a n c -> b a (n c)'), dim=-1)
+            print('temp_ref_matching', temp_ref_matching.shape, 'n', ref_node_corr_indices.shape[0])
+            ref_matching = rearrange(temp_ref_matching, 'b a (n c) -> b a n c', c=ref_matching.shape[-1])
+            temp_src_matching = F.normalize(rearrange(src_matching, 'b a m c -> b a (m c)'), dim=-1)
+            print('temp_src_matching', temp_src_matching.shape, 'm', src_node_corr_indices.shape[0])
+            src_matching = rearrange(temp_src_matching, 'b a (m c) -> b a m c', c=src_matching.shape[-1])
+
+            # calculate attention matrix
+            attention_scores_ae_rot_sup = torch.einsum('bahnc,behnc->baeh', ref_matching, src_matching)
+            attention_scores_ae_rot_sup = attention_scores_ae_rot_sup.mean(3) # bae
+            attention_scores_ae_rot_sup = (attention_scores_ae_rot_sup + 1) / 2
             rot_sup_attn_matrix = self.rotation_supervision(ref_feats_m, src_feats_m, ref_node_corr_indices, src_node_corr_indices)
             output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
             print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)

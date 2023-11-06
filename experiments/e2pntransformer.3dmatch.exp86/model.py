@@ -15,6 +15,7 @@ from geotransformer.modules.geotransformer import (
 from geotransformer.modules.transformer.rotation_supervision import RotationAttentionLayer
 from geotransformer.modules.transformer.permutation_invariant import PermutationInvariantLayer
 from backbone import E2PN
+from einops import rearrange
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
@@ -254,7 +255,6 @@ class GeoTransformer(nn.Module):
             output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
             print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
             print('transform\n', data_dict['transform'])
-
         
         torch.cuda.empty_cache()
 
