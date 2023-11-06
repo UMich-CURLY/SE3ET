@@ -25,10 +25,8 @@ class CoarseMatchingLoss(nn.Module):
         self.positive_overlap = cfg.coarse_loss.positive_overlap
 
     def forward(self, output_dict):
-        # ref_feats = output_dict['ref_feats_c'] # bnc
-        # src_feats = output_dict['src_feats_c'] # bmc
-        ref_feats = output_dict['ref_feats_m'] # banc
-        src_feats = output_dict['src_feats_m'] # bamc
+        ref_feats = output_dict['ref_feats_c']
+        src_feats = output_dict['src_feats_c']
         gt_node_corr_indices = output_dict['gt_node_corr_indices']
         gt_node_corr_overlaps = output_dict['gt_node_corr_overlaps']
         gt_ref_node_corr_indices = gt_node_corr_indices[:, 0]
@@ -40,17 +38,12 @@ class CoarseMatchingLoss(nn.Module):
         overlaps[gt_ref_node_corr_indices, gt_src_node_corr_indices] = gt_node_corr_overlaps
         pos_masks = torch.gt(overlaps, self.positive_overlap)
         neg_masks = torch.eq(overlaps, 0)
-
-        # anchor_matching = torch.zeros_like(ref_feats)
-        # pos_masks = torch.gt(overlaps, self.positive_overlap)
-        # neg_masks = torch.eq(overlaps, 0)
-
         pos_scales = torch.sqrt(overlaps * pos_masks.float())
 
         loss = self.weighted_circle_loss(pos_masks, neg_masks, feat_dists, pos_scales)
 
         return loss
-    
+
 
 class FineMatchingLoss(nn.Module):
     def __init__(self, cfg):
@@ -126,10 +119,9 @@ class RotationMatchingLoss(nn.Module):
         """
         targets are either 0 or 1
         """
-        """
         # load attention weights from output_dict
         attn_matrix0 = output_dict['attn_matrix0'].squeeze() # 4*4
-        print('attn_matrix0\n', attn_matrix0.shape, '\n', attn_matrix0)
+        # print('attn_matrix0\n', attn_matrix0.shape, '\n', attn_matrix0)
         attn_matrix1 = output_dict['attn_matrix1'].squeeze() # 4*4
         # print('attn_matrix1\n', attn_matrix1.shape, '\n', attn_matrix1)
 
@@ -157,54 +149,27 @@ class RotationMatchingLoss(nn.Module):
         # contruct ground true label matrix
         src = torch.ones((4, 1)).to(self.device)
         target0 = torch.zeros(4, 4, dtype=attn_matrix0.dtype, device=attn_matrix0.device).scatter_(1, index0, src)
+        # print('target0\n', target0)
         target1 = torch.zeros(4, 4, dtype=attn_matrix1.dtype, device=attn_matrix1.device).scatter_(1, index1, src)
-
-        if self.attn_r_positive_rot_supervise == 'softplus':
-            target0 = self.softplus(target0)
-            target1 = self.softplus(target1)
-
-        print('target0\n', target0)
         # print('target1\n', target1)
-        
+
         # attn_w0 P0 = P1, attn_w1 P1 = P0
         loss0 = self.criterion(attn_matrix0, target0)
         loss1 = self.criterion(attn_matrix1, target1)
-        """
 
-        # load attention weights from output_dict
-        attn_matrix = output_dict['rot_sup_matrix'].squeeze() # 4*4
-        print('attn_matrix\n', attn_matrix.shape, '\n', attn_matrix)
-
-        # get ground truth rotation matrix from data_dict
-        gt_T0 = data_dict['transform'] # (4, 4)
-        gt_R0 = gt_T0[:3, :3] # (3, 3) 
-
-        # Find the nearest anchor from the ground truth rotation
-        R_target, R0_label = fr.label_relative_rotation_simple(self.anchors, gt_R0)
-        v = torch.Tensor(self.trace_idx_ori[R0_label]).long()
-        index = v.reshape((-1, 1)).to(self.device)
-
-        # contruct ground true label matrix
-        src = torch.ones((4, 1)).to(self.device)
-        target = torch.zeros(4, 4, dtype=attn_matrix.dtype, device=attn_matrix.device).scatter_(1, index, src)
-        print('target\n', target)
-
-        loss = self.criterion(attn_matrix, target)
-
-        return loss
+        return loss0 + loss1
 
 
 class OverallLoss(nn.Module):
     def __init__(self, cfg):
         super(OverallLoss, self).__init__()
-        self.coarse_loss = CoarseMatchingLoss(cfg)      
+        self.coarse_loss = CoarseMatchingLoss(cfg)
         self.fine_loss = FineMatchingLoss(cfg)
         self.rotation_loss = RotationMatchingLoss(cfg)
         self.weight_coarse_loss = cfg.loss.weight_coarse_loss
         self.weight_fine_loss = cfg.loss.weight_fine_loss
         self.weight_rotation_loss = cfg.loss.weight_rotation_loss
         self.supervise_rotation = cfg.geotransformer.supervise_rotation
-        self.anchor_matching = cfg.geotransformer.anchor_matching
 
     def forward(self, output_dict, data_dict):
         coarse_loss = self.coarse_loss(output_dict)
@@ -220,7 +185,6 @@ class OverallLoss(nn.Module):
                 'f_loss': fine_loss,
                 'r_loss': rotation_loss,
             }
-        
         else:
             loss = self.weight_coarse_loss * coarse_loss + self.weight_fine_loss * fine_loss
 

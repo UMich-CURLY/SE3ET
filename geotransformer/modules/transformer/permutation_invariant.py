@@ -57,10 +57,10 @@ class PermutationInvariantLayer(nn.Module):
 
         # get the matching anchor features
         src_feats_matching = src_feats_m[:, v] # benc -> banc (matching anchor with the feat0)
-
+        
         # MLP for reducing the size of the features      
-        ref_feats_m = rearrange(ref_feats_m, 'b a n c -> b n (a c)')
-        src_feats_matching = rearrange(src_feats_matching, 'b a n c -> b n (a c)')
+        ref_feats_rearrange = rearrange(ref_feats_m, 'b a n c -> b n (a c)')
+        src_feats_rearrange = rearrange(src_feats_matching, 'b a n c -> b n (a c)')
 
         # ref_feats = self.fc1(ref_feats_m)
         # ref_feats = self.dropout(ref_feats)
@@ -68,7 +68,7 @@ class PermutationInvariantLayer(nn.Module):
         # ref_feats = self.batch_norm(ref_feats)
         # ref_feats = torch.permute(ref_feats, (0, 2, 1))
         # ref_feats = self.relu(ref_feats)
-        ref_feats = ref_feats_m
+        ref_feats = ref_feats_rearrange
         ref_feats = self.fc2(ref_feats)
         
         # src_feats = self.fc1(src_feats_matching)
@@ -77,7 +77,7 @@ class PermutationInvariantLayer(nn.Module):
         # src_feats = self.batch_norm(src_feats)
         # src_feats = torch.permute(src_feats, (0, 2, 1))
         # src_feats = self.relu(src_feats)
-        src_feats = src_feats_matching
+        src_feats = src_feats_rearrange
         src_feats = self.fc2(src_feats)
         
-        return ref_feats, src_feats
+        return ref_feats_m, src_feats_matching, ref_feats, src_feats
