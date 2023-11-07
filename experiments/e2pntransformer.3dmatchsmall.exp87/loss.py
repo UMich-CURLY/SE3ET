@@ -25,10 +25,8 @@ class CoarseMatchingLoss(nn.Module):
         self.positive_overlap = cfg.coarse_loss.positive_overlap
 
     def forward(self, output_dict):
-        # ref_feats = output_dict['ref_feats_c'] # bnc
-        # src_feats = output_dict['src_feats_c'] # bmc
-        ref_feats = output_dict['ref_feats_m'] # banc
-        src_feats = output_dict['src_feats_m'] # bamc
+        ref_feats = output_dict['ref_feats_c']
+        src_feats = output_dict['src_feats_c']
         gt_node_corr_indices = output_dict['gt_node_corr_indices']
         gt_node_corr_overlaps = output_dict['gt_node_corr_overlaps']
         gt_ref_node_corr_indices = gt_node_corr_indices[:, 0]
@@ -40,10 +38,42 @@ class CoarseMatchingLoss(nn.Module):
         overlaps[gt_ref_node_corr_indices, gt_src_node_corr_indices] = gt_node_corr_overlaps
         pos_masks = torch.gt(overlaps, self.positive_overlap)
         neg_masks = torch.eq(overlaps, 0)
+        pos_scales = torch.sqrt(overlaps * pos_masks.float())
 
-        # anchor_matching = torch.zeros_like(ref_feats)
-        # pos_masks = torch.gt(overlaps, self.positive_overlap)
-        # neg_masks = torch.eq(overlaps, 0)
+        loss = self.weighted_circle_loss(pos_masks, neg_masks, feat_dists, pos_scales)
+
+        return loss
+    
+class CoarseAnchorMatchingLoss(nn.Module):
+    def __init__(self, cfg):
+        super(CoarseAnchorMatchingLoss, self).__init__()
+        self.weighted_circle_loss = WeightedCircleLoss(
+            cfg.coarse_loss.positive_margin,
+            cfg.coarse_loss.negative_margin,
+            cfg.coarse_loss.positive_optimal,
+            cfg.coarse_loss.negative_optimal,
+            cfg.coarse_loss.log_scale,
+        )
+        self.positive_overlap = cfg.coarse_loss.positive_overlap
+
+    def forward(self, output_dict):
+        ref_feats = output_dict['ref_feats_m'] # anc
+        src_feats = output_dict['src_feats_m'] # amc
+        gt_node_corr_indices = output_dict['gt_node_corr_indices']
+        gt_node_corr_overlaps = output_dict['gt_node_corr_overlaps']
+        gt_ref_node_corr_indices = gt_node_corr_indices[:, 0]
+        gt_src_node_corr_indices = gt_node_corr_indices[:, 1]
+
+        feat_dists = torch.sqrt(pairwise_distance(ref_feats, src_feats, normalized=True)) # anm
+
+        overlaps = torch.zeros_like(feat_dists) # anm
+
+        # point matching
+        overlaps[:, gt_ref_node_corr_indices, gt_src_node_corr_indices] = gt_node_corr_overlaps
+        
+        # define positive and negative masks
+        pos_masks = torch.gt(overlaps, self.positive_overlap) # anm
+        neg_masks = torch.eq(overlaps, 0) # anm
 
         pos_scales = torch.sqrt(overlaps * pos_masks.float())
 
@@ -199,6 +229,7 @@ class OverallLoss(nn.Module):
         super(OverallLoss, self).__init__()
         self.coarse_loss = CoarseMatchingLoss(cfg)      
         self.fine_loss = FineMatchingLoss(cfg)
+        self.coarse_anchor_loss = CoarseAnchorMatchingLoss(cfg)
         self.rotation_loss = RotationMatchingLoss(cfg)
         self.weight_coarse_loss = cfg.loss.weight_coarse_loss
         self.weight_fine_loss = cfg.loss.weight_fine_loss
@@ -207,7 +238,10 @@ class OverallLoss(nn.Module):
         self.anchor_matching = cfg.geotransformer.anchor_matching
 
     def forward(self, output_dict, data_dict):
-        coarse_loss = self.coarse_loss(output_dict)
+        if self.anchor_matching:
+            coarse_loss = self.coarse_anchor_loss(output_dict)
+        else:
+            coarse_loss = self.coarse_loss(output_dict)
         fine_loss = self.fine_loss(output_dict, data_dict)
 
         if self.supervise_rotation:

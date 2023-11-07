@@ -80,4 +80,4 @@ class PermutationInvariantLayer(nn.Module):
         src_feats = src_feats_rearrange
         src_feats = self.fc2(src_feats)
         
-        return ref_feats_m, src_feats_matching, ref_feats, src_feats
+        return ref_feats_m.squeeze(0), src_feats_matching.squeeze(0), ref_feats, src_feats
