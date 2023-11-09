@@ -3,6 +3,7 @@ data/3DMatch/data
 *.out
 output
 *sbatch_*
+data/Kitti
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

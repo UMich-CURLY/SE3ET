@@ -47,7 +47,7 @@ _C.train.augmentation_rotation = 1.0
 _C.test = edict()
 _C.test.batch_size = 1
 _C.test.num_workers = 8
-_C.test.point_limit = None
+_C.test.point_limit = 10000
 
 # evaluation
 _C.eval = edict()
