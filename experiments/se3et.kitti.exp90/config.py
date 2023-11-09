@@ -15,10 +15,10 @@ _C.seed = 7351
 # dirs
 _C.working_dir = osp.dirname(osp.realpath(__file__))
 _C.root_dir = osp.dirname(osp.dirname(_C.working_dir))
-_C.cluster_dir = '/scratch/maanigj_root/maagj0/chienerh/SE3ET'
+_C.cluster_dir = '/scratch/maanigj_root/maanigj0/chienerh/SE3ET'
 _C.exp_name = osp.basename(_C.working_dir)
-_C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
-# _C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
+# _C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
+_C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
 _C.snapshot_dir = osp.join(_C.output_dir, 'snapshots')
 _C.log_dir = osp.join(_C.output_dir, 'logs')
 _C.event_dir = osp.join(_C.output_dir, 'events')
@@ -32,14 +32,14 @@ ensure_dir(_C.feature_dir)
 
 # data
 _C.data = edict()
-_C.data.dataset_root = osp.join(_C.root_dir, 'data', 'Kitti')
-# _C.data.dataset_root = osp.join(_C.cluster_dir, 'data', 'Kitti')
+# _C.data.dataset_root = osp.join(_C.root_dir, 'data', 'Kitti')
+_C.data.dataset_root = osp.join(_C.cluster_dir, 'data', 'Kitti')
 
 # train data
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 4
-_C.train.point_limit = 30000
+_C.train.point_limit = 10000
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.01
 _C.train.augmentation_min_scale = 0.8
