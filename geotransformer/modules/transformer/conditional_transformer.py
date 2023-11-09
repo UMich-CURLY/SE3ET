@@ -254,7 +254,7 @@ class RPEConditionalTransformer(nn.Module):
                         else:
                             feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
                             feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                    elif (block == 'cross') and (i+1 == len(self.blocks)):
+                    elif (block == 'cross') and (i+1 == len(self.blocks)) and (self.blocks[i-1] == 'self_eq'):
                         ### the last cross block, we need to obtain both equivariant features and invariant features
                         feats0_eq, scores0 = self.layers[i](feats0, feats1, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
                         # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
