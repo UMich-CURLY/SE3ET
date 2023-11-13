@@ -209,19 +209,6 @@ We evaluate GeoTransformer on the standard Kitti benchmark as in [PREDATOR](http
 | :-------- | :---: | :---: | :---: |
 | Kitti     | 0.230 |  6.2  | 99.8  |
 
-### ModelNet
-
-We evaluate GeoTransformer on ModelNet with two settings:
-
-1. Standard setting: [0, 45] rotation, [-0.5, 0.5] translation, gaussian noise clipped to 0.05.
-2. Full-range setting: [0, 180] rotation, [-0.5, 0.5] translation, gaussian noise clipped to 0.05.
-
-We remove symmetric classes and use the data augmentation in [RPMNet](https://arxiv.org/abs/2003.13479) which is more difficult than [PRNet](https://arxiv.org/abs/1910.12240).
-
-| Benchmark      |  RRE  |  RTE  | RMSE  |
-| :------------- | :---: | :---: | :---: |
-| seen (45-deg)  | 1.577 | 0.018 | 0.017 |
-| seen (180-deg) | 6.830 | 0.044 | 0.042 |
 
 ## Testing on your own data
 
@@ -235,24 +222,8 @@ CUDA_VISIBLE_DEVICES=0 python demo.py --src_file=../../data/demo/src.npy --ref_f
 
 Change the arguments `src_file`, `ref_file` and `gt` to your own data, where `src_file` and `ref_file` are numpy files containing a `np.ndarray` in shape of Nx3, and `gt_file` is a numpy file containing a 4x4 transformation matrix. Note that you should scale your data to match the voxel size in 3DMatch (2.5cm).
 
-## Citation
-
-```bibtex
-@inproceedings{qin2022geometric,
-    title={Geometric Transformer for Fast and Robust Point Cloud Registration},
-    author={Zheng Qin and Hao Yu and Changjian Wang and Yulan Guo and Yuxing Peng and Kai Xu},
-    booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-    month={June},
-    year={2022},
-    pages={11143-11152}
-}
-```
 
 ## Acknowledgements
+- [GeoTransformer](https://github.com/qinzheng93/GeoTransformer)
 
-- [D3Feat](https://github.com/XuyangBai/D3Feat.pytorch)
-- [PREDATOR](https://github.com/prs-eth/OverlapPredator)
-- [RPMNet](https://github.com/yewzijian/RPMNet)
-- [CoFiNet](https://github.com/haoyu94/Coarse-to-fine-correspondences)
-- [huggingface-transformer](https://github.com/huggingface/transformers)
-- [SuperGlue](https://github.com/magicleap/SuperGluePretrainedNetwork)
+We thank the authors for open sourcing their methods, the code is heavily borrowed from [GeoTransformer](https://github.com/qinzheng93/GeoTransformer)

@@ -9,4 +9,3 @@ for n in 250 500 1000 2500 5000; do
 done
 
 CUDA_VISIBLE_DEVICES=0 python eval.py --benchmark=3DLoMatch --method=lgr
-

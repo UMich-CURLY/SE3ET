@@ -237,7 +237,7 @@ def eval_one_epoch(args, cfg, logger):
         est_log = osp.join(cfg.registration_dir, benchmark, scene_name, 'est.log')
         write_log_file(est_log, estimated_transforms)
 
-        logger.info(f'Scene_name: {scene_name}')
+        # logger.info(f'Scene_name: {scene_name}')
 
         # 1. print correspondence evaluation results (one scene)
         # 1.1 coarse level statistics
@@ -277,7 +277,7 @@ def eval_one_epoch(args, cfg, logger):
         message += ', f_FMR: {:.3f}'.format(recall)
         message += ', f_IR: {:.3f}'.format(inlier_ratio)
         message += ', f_OV: {:.3f}'.format(overlap)
-        logger.info(message)
+        # logger.info(message)
 
         # 2. print registration evaluation results (one scene)
         recall = registration_meter.mean('scene_recall')
@@ -305,7 +305,7 @@ def eval_one_epoch(args, cfg, logger):
         message += ', mean_RTE: {:.3f}'.format(mean_rte)
         message += ', median_RRE: {:.3f}'.format(median_rre)
         message += ', median_RTE: {:.3f}'.format(median_rte)
-        logger.info(message)
+        # logger.info(message)
 
     if args.test_epoch is not None:
         logger.critical('Epoch {}'.format(args.test_epoch))
@@ -371,7 +371,7 @@ def main():
     message = 'Command executed: ' + ' '.join(sys.argv)
     logger.info(message)
     message = 'Configs:\n' + json.dumps(cfg, indent=4)
-    logger.info(message)
+    # logger.info(message)
 
     eval_one_epoch(args, cfg, logger)
 
