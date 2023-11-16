@@ -60,7 +60,7 @@ class PermutationInvariantLayer(nn.Module):
         
         # MLP for reducing the size of the features      
         ref_feats_rearrange = rearrange(ref_feats_m, 'b a n c -> b n (a c)')
-        src_feats_rearrange = rearrange(src_feats_matching, 'b a n c -> b n (a c)')
+        src_feats_rearrange = rearrange(src_feats_matching, 'b a n c -> b n (a c)')   
 
         # ref_feats = self.fc1(ref_feats_m)
         # ref_feats = self.dropout(ref_feats)

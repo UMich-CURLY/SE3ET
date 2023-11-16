@@ -84,7 +84,7 @@ class SE3ET(nn.Module):
         else:
             self.rotation_supervision = RotationAttentionLayer(cfg.geotransformer.output_dim, cfg.geotransformer.num_heads)
 
-        self.permutation_invariant = PermutationInvariantLayer(cfg.epn.kanchor, cfg.geotransformer.output_dim)
+        self.permutation_invariant = PermutationInvariantLayer(cfg.epn.kanchor, cfg.geotransformer.hidden_dim)
 
     def forward(self, data_dict):
         output_dict = {}
@@ -177,9 +177,8 @@ class SE3ET(nn.Module):
 
         if self.anchor_matching:
             # permutation invariant layer, make src_feat_m, src_feat_m invariant for anchor matching
-            ref_feats_m, src_feats_m, ref_feats_c, src_feats_c = self.permutation_invariant(ref_feats_m, src_feats_m, data_dict['transform'])
-            output_dict['ref_feats_m'] = ref_feats_m
-            output_dict['src_feats_m'] = src_feats_m
+            _, _, ref_feats_c, src_feats_c = self.permutation_invariant(ref_feats_m, src_feats_m, data_dict['transform'])
+
         ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1)
         src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1)
 
@@ -251,26 +250,12 @@ class SE3ET(nn.Module):
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
 
-        # 10. Inference Rotation
-        if ref_feats_m is not None and src_feats_m is not None:
-            with torch.no_grad():
-                ref_matching = ref_feats_m[:, ref_node_corr_indices, :] # anc -> an'c
-                src_matching = src_feats_m[:, src_node_corr_indices, :] # emc -> en'c, find the best matching point
-
-                # normalize over nc
-                temp_ref_matching = F.normalize(rearrange(ref_matching, 'a n c -> a (n c)'), dim=-1)
-                print('temp_ref_matching', temp_ref_matching.shape, 'n', ref_node_corr_indices.shape[0])
-                ref_matching = rearrange(temp_ref_matching, 'a (n c) -> a n c', c=ref_matching.shape[-1])
-                temp_src_matching = F.normalize(rearrange(src_matching, 'a m c -> a (m c)'), dim=-1)
-                print('temp_src_matching', temp_src_matching.shape, 'm', src_node_corr_indices.shape[0])
-                src_matching = rearrange(temp_src_matching, 'a (m c) -> a m c', c=src_matching.shape[-1])
-
-                # calculate attention matrix
-                rot_sup_attn_matrix = torch.einsum('anc,enc->ae', ref_matching, src_matching)
-                rot_sup_attn_matrix = (rot_sup_attn_matrix + 1) / 2
-                output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
-                print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
-                print('transform\n', data_dict['transform'])
+        # 10. Supervise Rotation
+        if self.transformer.supervise_rotation:
+            rot_sup_attn_matrix = self.rotation_supervision(ref_feats_m, src_feats_m, ref_node_corr_indices, src_node_corr_indices)
+            output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
+            print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
+            print('transform\n', data_dict['transform'])
 
         
         torch.cuda.empty_cache()
