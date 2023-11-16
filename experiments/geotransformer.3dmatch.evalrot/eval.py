@@ -204,7 +204,7 @@ def eval_one_epoch(args, cfg, logger):
             if gt_indices[ref_frame, src_frame] != -1:
                 # evaluate transform (realignment error)
                 gt_index = gt_indices[ref_frame, src_frame]
-                transform = gt_logs[gt_index]['transform']
+                # transform = gt_logs[gt_index]['transform']
                 covariance = gt_infos[gt_index]['covariance']
                 error = compute_transform_error(transform, covariance, estimated_transform)
                 message += ', r_RMSE: {:.3f}'.format(np.sqrt(error))

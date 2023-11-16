@@ -12,26 +12,29 @@ from geotransformer.modules.geotransformer import (
     SuperPointTargetGenerator,
     LocalGlobalRegistration,
 )
-
-from backbone import KPConvFPN
-
+from geotransformer.modules.transformer.rotation_supervision import RotationAttentionLayer
+from geotransformer.modules.transformer.permutation_invariant import PermutationInvariantLayer
+from backbone import E2PN
+from einops import rearrange
 
 class GeoTransformer(nn.Module):
     def __init__(self, cfg):
         super(GeoTransformer, self).__init__()
         self.num_points_in_patch = cfg.model.num_points_in_patch
         self.matching_radius = cfg.model.ground_truth_matching_radius
+        self.save_backbone_feature = cfg.geotransformer.save_backbone_feature
+        self.anchor_matching = cfg.geotransformer.anchor_matching        
 
-        self.backbone = KPConvFPN(
+        self.backbone = E2PN(
             cfg.backbone.input_dim,
             cfg.backbone.output_dim,
             cfg.backbone.init_dim,
-            cfg.backbone.kernel_size,
             cfg.backbone.init_radius,
             cfg.backbone.init_sigma,
             cfg.backbone.group_norm,
+            cfg.epn,
         )
-
+        
         self.transformer = GeometricTransformer(
             cfg.geotransformer.input_dim,
             cfg.geotransformer.output_dim,
@@ -41,7 +44,15 @@ class GeoTransformer(nn.Module):
             cfg.geotransformer.sigma_d,
             cfg.geotransformer.sigma_a,
             cfg.geotransformer.angle_k,
+            supervise_rotation=cfg.geotransformer.supervise_rotation,
+            anchor_matching=cfg.geotransformer.anchor_matching,
             reduction_a=cfg.geotransformer.reduction_a,
+            na=cfg.epn.kanchor,
+            attn_r_positive=cfg.geotransformer.attn_r_positive,
+            attn_r_positive_rot_supervise=cfg.geotransformer.attn_r_positive_rot_supervise,
+            align_mode=cfg.geotransformer.align_mode,
+            alternative_impl=cfg.geotransformer.alternative_impl,
+            n_level_equiv=cfg.geotransformer.n_level_equiv,
         )
 
         self.coarse_target = SuperPointTargetGenerator(
@@ -65,6 +76,12 @@ class GeoTransformer(nn.Module):
         )
 
         self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
+        if self.save_backbone_feature:
+            self.rotation_supervision = RotationAttentionLayer(cfg.geotransformer.input_dim, cfg.geotransformer.num_heads)
+        else:
+            self.rotation_supervision = RotationAttentionLayer(cfg.geotransformer.output_dim, cfg.geotransformer.num_heads)
+
+        self.permutation_invariant = PermutationInvariantLayer(cfg.epn.kanchor, cfg.geotransformer.output_dim)
 
     def forward(self, data_dict):
         output_dict = {}
@@ -123,21 +140,45 @@ class GeoTransformer(nn.Module):
         output_dict['gt_node_corr_indices'] = gt_node_corr_indices
         output_dict['gt_node_corr_overlaps'] = gt_node_corr_overlaps
 
-        # 2. KPFCNN Encoder
+        # 2. E2PN Encoder
         feats_list = self.backbone(feats, data_dict)
 
         feats_c = feats_list[-1]
         feats_f = feats_list[0]
 
         # 3. Conditional Transformer
-        ref_feats_c = feats_c[:ref_length_c]
+        ref_feats_c = feats_c[:ref_length_c] # N, A, C=1024
         src_feats_c = feats_c[ref_length_c:]
-        ref_feats_c, src_feats_c, _, _, _, _ = self.transformer(
-            ref_points_c.unsqueeze(0),
-            src_points_c.unsqueeze(0),
-            ref_feats_c.unsqueeze(0),
-            src_feats_c.unsqueeze(0),
-        )
+        
+        
+        if self.save_backbone_feature and self.transformer.supervise_rotation:
+            ref_feats_m = torch.permute(ref_feats_c.unsqueeze(0), (0, 2, 1, 3)) # B, A, N, C=1024
+            src_feats_m = torch.permute(src_feats_c.unsqueeze(0), (0, 2, 1, 3)) # B, A, N, C=1024
+            ref_feats_c, src_feats_c, _, _, attn_matrix0, attn_matrix1 = self.transformer(
+                ref_points_c.unsqueeze(0),
+                src_points_c.unsqueeze(0),
+                ref_feats_c.unsqueeze(0),
+                src_feats_c.unsqueeze(0),
+            ) # B, N/M, C=256
+        else:
+            ref_feats_c, src_feats_c, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1 = self.transformer(
+                ref_points_c.unsqueeze(0),
+                src_points_c.unsqueeze(0),
+                ref_feats_c.unsqueeze(0),
+                src_feats_c.unsqueeze(0),
+            ) # B, N/M, C=256
+        
+        output_dict['ref_feats_m'] = ref_feats_m
+        output_dict['src_feats_m'] = src_feats_m
+        output_dict['attn_matrix0'] = attn_matrix0
+        output_dict['attn_matrix1'] = attn_matrix1
+
+        if self.anchor_matching:
+            # permutation invariant layer, make src_feat_m, src_feat_m invariant for anchor matching
+            ref_feats_m, src_feats_m, ref_feats_c, src_feats_c = self.permutation_invariant(ref_feats_m, src_feats_m, data_dict['transform'])
+            output_dict['ref_feats_m'] = ref_feats_m
+            output_dict['src_feats_m'] = src_feats_m
+
         ref_feats_c_norm = F.normalize(ref_feats_c.squeeze(0), p=2, dim=1)
         src_feats_c_norm = F.normalize(src_feats_c.squeeze(0), p=2, dim=1)
 
@@ -145,7 +186,7 @@ class GeoTransformer(nn.Module):
         output_dict['src_feats_c'] = src_feats_c_norm
 
         # 5. Head for fine level matching
-        ref_feats_f = feats_f[:ref_length_f]
+        ref_feats_f = feats_f[:ref_length_f] # N, A, C=256
         src_feats_f = feats_f[ref_length_f:]
         output_dict['ref_feats_f'] = ref_feats_f
         output_dict['src_feats_f'] = src_feats_f
@@ -208,6 +249,30 @@ class GeoTransformer(nn.Module):
             output_dict['src_corr_points'] = src_corr_points
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
+
+        
+        # 10. Inference Rotation
+        with torch.no_grad():
+            ref_matching = ref_feats_m[:, ref_node_corr_indices, :] # anc -> an'c
+            src_matching = src_feats_m[:, src_node_corr_indices, :] # emc -> en'c, find the best matching point
+
+            # normalize over nc
+            temp_ref_matching = F.normalize(rearrange(ref_matching, 'a n c -> a (n c)'), dim=-1)
+            print('temp_ref_matching', temp_ref_matching.shape, 'n', ref_node_corr_indices.shape[0])
+            ref_matching = rearrange(temp_ref_matching, 'a (n c) -> a n c', c=ref_matching.shape[-1])
+            temp_src_matching = F.normalize(rearrange(src_matching, 'a m c -> a (m c)'), dim=-1)
+            print('temp_src_matching', temp_src_matching.shape, 'm', src_node_corr_indices.shape[0])
+            src_matching = rearrange(temp_src_matching, 'a (m c) -> a m c', c=src_matching.shape[-1])
+
+            # calculate attention matrix
+            rot_sup_attn_matrix = torch.einsum('anc,enc->ae', ref_matching, src_matching)
+            rot_sup_attn_matrix = (rot_sup_attn_matrix + 1) / 2
+            output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
+            print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
+            print('transform\n', data_dict['transform'])
+
+        
+        torch.cuda.empty_cache()
 
         return output_dict
 

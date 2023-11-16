@@ -190,39 +190,6 @@ CUDA_VISIBLE_DEVICES=GPUS python -m torch.distributed.launch --nproc_per_node=NG
 
 Note that the learning rate is multiplied by the number of GPUs by default as the batch size increased. In our experiments, multi-gpu training slightly improves the performance.
 
-## Results
-
-### 3DMatch
-
-We evaluate GeoTransformer on the standard 3DMatch/3DLoMatch benchmarks as in [PREDATOR](https://arxiv.org/abs/2011.13005).
-
-| Benchmark |  FMR  |  IR   |  RR   |
-| :-------- | :---: | :---: | :---: |
-| 3DMatch   | 98.2  | 70.9  | 92.5  |
-| 3DLoMatch | 87.1  | 43.5  | 74.2  |
-
-### Kitti odometry
-
-We evaluate GeoTransformer on the standard Kitti benchmark as in [PREDATOR](https://arxiv.org/abs/2011.13005).
-
-| Benchmark |  RRE  |  RTE  |  RR   |
-| :-------- | :---: | :---: | :---: |
-| Kitti     | 0.230 |  6.2  | 99.8  |
-
-
-## Testing on your own data
-
-To test on your own data, the recommended way is to implement a `Dataset` as in `geotransformer.dataset.registration.threedmatch.dataset.py`. Each item in the dataset is a `dict` contains at least 5 keys: `ref_points`, `src_points`, `ref_feats`, `src_feats` and `transform`.
-
-We also provide a demo script to quickly test our pre-trained model on your own data in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn/demo.py`. Use the following command to run the demo:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python demo.py --src_file=../../data/demo/src.npy --ref_file=../../data/demo/ref.npy --gt_file=../../data/demo/gt.npy --weights=../../weights/geotransformer-3dmatch.pth.tar
-```
-
-Change the arguments `src_file`, `ref_file` and `gt` to your own data, where `src_file` and `ref_file` are numpy files containing a `np.ndarray` in shape of Nx3, and `gt_file` is a numpy file containing a 4x4 transformation matrix. Note that you should scale your data to match the voxel size in 3DMatch (2.5cm).
-
-
 ## Acknowledgements
 - [GeoTransformer](https://github.com/qinzheng93/GeoTransformer)
 

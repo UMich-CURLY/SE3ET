@@ -370,7 +370,7 @@ def main():
 
     message = 'Command executed: ' + ' '.join(sys.argv)
     logger.info(message)
-    message = 'Configs:\n' + json.dumps(cfg, indent=4)
+    # message = 'Configs:\n' + json.dumps(cfg, indent=4)
     # logger.info(message)
 
     eval_one_epoch(args, cfg, logger)
