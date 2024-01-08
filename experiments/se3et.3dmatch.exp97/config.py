@@ -15,8 +15,10 @@ _C.seed = 7351
 # dirs
 _C.working_dir = osp.dirname(osp.realpath(__file__))
 _C.root_dir = osp.dirname(osp.dirname(_C.working_dir))
+_C.cluster_dir = '/scratch/maanigj_root/maanigj0/chienerh/SE3ET'
 _C.exp_name = osp.basename(_C.working_dir)
-_C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
+# _C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
+_C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
 _C.snapshot_dir = osp.join(_C.output_dir, 'snapshots')
 _C.log_dir = osp.join(_C.output_dir, 'logs')
 _C.event_dir = osp.join(_C.output_dir, 'events')
@@ -32,7 +34,8 @@ ensure_dir(_C.registration_dir)
 
 # data
 _C.data = edict()
-_C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
+# _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
+_C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
 
 # train data
 _C.train = edict()
