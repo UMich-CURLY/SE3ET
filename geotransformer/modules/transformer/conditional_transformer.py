@@ -214,6 +214,8 @@ class RPEConditionalTransformer(nn.Module):
         attn_matrix1 = None
         feats0_eq = None
         feats1_eq = None
+        ref_feat_m = None
+        src_feat_m = None
         for i, block in enumerate(self.blocks):
             if 'self' in block:
                 if (feats0_eq is not None) and (feats1_eq is not None):
@@ -265,16 +267,20 @@ class RPEConditionalTransformer(nn.Module):
                         ref_feat_m = feats0_eq
                         src_feat_m = feats1_eq
                     elif ('r_soft' in block) and (i+1 == len(self.blocks)) and self.return_attention_weights:
-                        ### the last cross block is equivariant cross_r and we are doing rotation supervision
-                        ### so we need to obtain both equivariant features and invariant features
-                        feats0_eq, scores0 = self.layers[i](feats0_eq, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                        feats1_eq, scores1 = self.layers[i](feats1_eq, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
-                        # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                        # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                        feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
-                        feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
-                        ref_feat_m = feats0_eq
-                        src_feat_m = feats1_eq
+                        if (feats0_eq is not None) and (feats1_eq is not None):
+                            ### the last cross block is equivariant cross_r and we are doing rotation supervision
+                            ### so we need to obtain both equivariant features and invariant features
+                            feats0_eq, scores0 = self.layers[i](feats0_eq, feats1_eq, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            feats1_eq, scores1 = self.layers[i](feats1_eq, feats0_eq, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                            feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
+                            feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
+                            ref_feat_m = feats0_eq
+                            src_feat_m = feats1_eq
+                        else:
+                            feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
+                            feats1, scores1 = self.layers[i](feats1, feats0, memory_masks=masks0, gt_indices=gt_indices, gt_overlap=gt_overlap)
                     else:
                         ### normal cross block or the last cross block when no rotation supervision                       
                         feats0, scores0 = self.layers[i](feats0, feats1, memory_masks=masks1, gt_indices=gt_indices, gt_overlap=gt_overlap)
@@ -296,9 +302,34 @@ class RPEConditionalTransformer(nn.Module):
                         if 'r_best' in block:
                             feats0, feats1 = self.eq2inv_best(feats0, feats1, attn_w0, attn_w1, self.layers[i])
                         else:
+                            feats0_eq = feats0
+                            feats1_eq = feats1
                             feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
             if self.return_attention_scores:
                 attention_scores.append([scores0, scores1])
+            """
+            # checking attention matrix after each layer
+            if (feats0_eq is not None):
+                print('layer', i, 'block name', block)
+                # test similarity
+                from einops import rearrange
+                import torch.nn.functional as F
+                feats0_norm = F.normalize(rearrange(feats0_eq, 'b a n c -> b a (n c)'), dim=-1)
+                attention_matrix = torch.einsum('bac,bec->bae', feats0_norm, feats0_norm)
+                attention_matrix = attention_matrix.mean(0) # bae
+                print('transformer attention_matrix\n', attention_matrix)
+            elif (block == 'self_eq') or ('r_soft' in block) or ('a_soft' in block):
+                print('layer', i, 'block name', block)
+                # test similarity
+                print('feats0', feats0.shape)
+                from einops import rearrange
+                import torch.nn.functional as F
+                feats0_norm = F.normalize(rearrange(feats0, 'b a n c -> b a (n c)'), dim=-1)
+                attention_matrix = torch.einsum('bac,bec->bae', feats0_norm, feats0_norm)
+                attention_matrix = attention_matrix.mean(0) # bae
+                print('transformer attention_matrix\n', attention_matrix)
+            """
+
         if self.return_attention_scores:
             return feats0, feats1, attention_scores#, v_permute0, v_permute1
         elif self.return_attention_weights or self.anchor_matching:

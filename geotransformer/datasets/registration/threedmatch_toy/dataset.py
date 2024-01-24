@@ -57,7 +57,7 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
             #     self.metadata_list =  self.metadata_list[:1]
             # elif subset == 'val':
             #     self.metadata_list =  self.metadata_list[:1]
-            self.metadata_list =  self.metadata_list[:100]
+            self.metadata_list = self.metadata_list[:1]
 
     def __len__(self):
         return len(self.metadata_list)
