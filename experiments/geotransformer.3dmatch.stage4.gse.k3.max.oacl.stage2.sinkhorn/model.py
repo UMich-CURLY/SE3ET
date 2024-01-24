@@ -14,6 +14,8 @@ from geotransformer.modules.geotransformer import (
 )
 
 from backbone import KPConvFPN
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 class GeoTransformer(nn.Module):
@@ -66,6 +68,10 @@ class GeoTransformer(nn.Module):
 
         self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
 
+
+        # print('backbone num_param', count_parameters(self.backbone))
+        # print('transformer num_param', count_parameters(self.transformer))
+        
     def forward(self, data_dict):
         output_dict = {}
 
