@@ -302,8 +302,8 @@ class RPEConditionalTransformer(nn.Module):
                         if 'r_best' in block:
                             feats0, feats1 = self.eq2inv_best(feats0, feats1, attn_w0, attn_w1, self.layers[i])
                         else:
-                            feats0_eq = feats0
-                            feats1_eq = feats1
+                            feats0_eq = None
+                            feats1_eq = None
                             feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
             if self.return_attention_scores:
                 attention_scores.append([scores0, scores1])
