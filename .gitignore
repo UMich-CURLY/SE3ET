@@ -1,4 +1,7 @@
 data/3DMatch/data
+data/*
+data/demo/*
+data/ModelNet/*
 *.tar
 *.out
 output

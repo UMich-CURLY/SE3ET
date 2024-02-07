@@ -40,6 +40,8 @@ class E2PN(nn.Module):
         subsampling_list = data_dict['subsampling']
         upsampling_list = data_dict['upsampling']
 
+        print('point list', points_list[0].shape, points_list[1].shape, points_list[2].shape, points_list[3].shape)
+
         feats_s1 = feats # N x 1 
         feats_s1 = self.preprocess(feats_s1) # N x kanchor x 1
         feats_s1 = self.encoder1_1(feats_s1, points_list[0], points_list[0], neighbors_list[0]) # N x kanchor x init_dim
@@ -61,6 +63,7 @@ class E2PN(nn.Module):
         feats_s4_inv = self.equ2inv4(feats_s4, points_list[3], points_list[3], neighbors_list[3])
 
         feats_list.append(feats_s4)
+        feats_list.append(feats_s1)
         latent_s4 = feats_s4_inv
 
         latent_s3 = nearest_upsample(latent_s4, upsampling_list[2])

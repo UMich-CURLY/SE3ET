@@ -46,28 +46,29 @@ class SingleTester(BaseTester):
         timer = Timer()
         total_iterations = len(self.test_loader)
         pbar = tqdm(enumerate(self.test_loader), total=total_iterations)
-        for iteration, data_dict in pbar:
-            # on start
-            self.iteration = iteration + 1
-            data_dict = to_cuda(data_dict)
-            self.before_test_step(self.iteration, data_dict)
-            # test step
-            torch.cuda.synchronize()
-            timer.add_prepare_time()
-            output_dict = self.test_step(self.iteration, data_dict)
-            torch.cuda.synchronize()
-            timer.add_process_time()
-            # eval step
-            result_dict = self.eval_step(self.iteration, data_dict, output_dict)
-            # after step
-            self.after_test_step(self.iteration, data_dict, output_dict, result_dict)
-            # logging
-            result_dict = release_cuda(result_dict)
-            summary_board.update_from_result_dict(result_dict)
-            message = self.summary_string(self.iteration, data_dict, output_dict, result_dict)
-            message += f', {timer.tostring()}'
-            pbar.set_description(message)
-            torch.cuda.empty_cache()
+        with torch.no_grad():
+            for iteration, data_dict in pbar:
+                # on start
+                self.iteration = iteration + 1
+                data_dict = to_cuda(data_dict)
+                self.before_test_step(self.iteration, data_dict)
+                # test step
+                torch.cuda.synchronize()
+                timer.add_prepare_time()
+                output_dict = self.test_step(self.iteration, data_dict)
+                torch.cuda.synchronize()
+                timer.add_process_time()
+                # eval step
+                result_dict = self.eval_step(self.iteration, data_dict, output_dict)
+                # after step
+                self.after_test_step(self.iteration, data_dict, output_dict, result_dict)
+                # logging
+                result_dict = release_cuda(result_dict)
+                summary_board.update_from_result_dict(result_dict)
+                message = self.summary_string(self.iteration, data_dict, output_dict, result_dict)
+                message += f', {timer.tostring()}'
+                pbar.set_description(message)
+                torch.cuda.empty_cache()
         self.after_test_epoch()
         summary_dict = summary_board.summary()
         message = get_log_string(result_dict=summary_dict, timer=timer)

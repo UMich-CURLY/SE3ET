@@ -64,6 +64,7 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
 
     def _load_point_cloud(self, file_name):
         points = torch.load(osp.join(self.data_root, file_name))
+        # print('point max', np.linalg.norm(points, axis=1).max())
         # NOTE: setting "point_limit" with "num_workers" > 1 will cause nondeterminism.
         if self.point_limit is not None and points.shape[0] > self.point_limit:
             indices = np.random.permutation(points.shape[0])[: self.point_limit]
@@ -90,9 +91,11 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
         data_dict['overlap'] = metadata['overlap']
 
         # get transformation
-        r = R.from_euler('z', 0, degrees=True)
+        r = R.from_euler('z', 240, degrees=True)
         rotation = r.as_matrix()
         translation = np.zeros((3,))
+        print('rotation\n', rotation)
+        print('translation\n', translation)
 
         # get point cloud (ref and src are the same in this toy sample dataset!)
         ref_points = self._load_point_cloud(metadata['pcd0'])

@@ -8,23 +8,27 @@ from geotransformer.modules.kpconv import UnaryBlock, LastUnaryBlock, nearest_up
 class E2PN(nn.Module):
     def __init__(self, input_dim, output_dim, init_dim, init_radius, init_sigma, group_norm, config_epn):
         super(E2PN, self).__init__()
+        upscale = 2
+        upscale_curr = upscale
         self.preprocess = LiftBlockEPN('lift_epn', input_dim, config_epn)
         self.encoder1_1 = SimpleBlockEPN('simple', input_dim, init_dim, init_radius, init_sigma, group_norm, config_epn)
         self.encoder1_2 = ResnetBottleneckBlockEPN('resnetb', init_dim, init_dim * 2, init_radius, init_sigma, group_norm, config_epn) #resnetb_strided_epn?
 
         self.encoder2_1 = ResnetBottleneckBlockEPN('resnetb_strided', init_dim * 2, init_dim * 2, init_radius, init_sigma, group_norm, config_epn)
-        self.encoder2_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 2, init_dim * 4, init_radius * 2, init_sigma * 2, group_norm, config_epn)
-        self.encoder2_3 = ResnetBottleneckBlockEPN('resnetb', init_dim * 4, init_dim * 4, init_radius * 2, init_sigma * 2, group_norm, config_epn)
+        self.encoder2_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 2, init_dim * 4, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
+        self.encoder2_3 = ResnetBottleneckBlockEPN('resnetb', init_dim * 4, init_dim * 4, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
         self.equ2inv2 = InvOutBlockEPN('inv_epn', init_dim * 4, config_epn)
 
-        self.encoder3_1 = ResnetBottleneckBlockEPN('resnetb_strided', init_dim * 4, init_dim * 4, init_radius * 2, init_sigma * 2, group_norm, config_epn)
-        self.encoder3_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 4, init_dim * 8, init_radius * 4, init_sigma * 4, group_norm, config_epn)
-        self.encoder3_3 = ResnetBottleneckBlockEPN('resnetb', init_dim * 8, init_dim * 8, init_radius * 4, init_sigma * 4, group_norm, config_epn)
+        self.encoder3_1 = ResnetBottleneckBlockEPN('resnetb_strided', init_dim * 4, init_dim * 4, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
+        upscale_curr = upscale_curr * upscale
+        self.encoder3_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 4, init_dim * 8, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
+        self.encoder3_3 = ResnetBottleneckBlockEPN('resnetb', init_dim * 8, init_dim * 8, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
         self.equ2inv3 = InvOutBlockEPN('inv_epn', init_dim * 8, config_epn)
 
-        self.encoder4_1 = ResnetBottleneckBlockEPN('resnetb_strided', init_dim * 8, init_dim * 8, init_radius * 4, init_sigma * 4, group_norm, config_epn)
-        self.encoder4_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 8, init_dim * 16, init_radius * 8, init_sigma * 8, group_norm, config_epn)
-        self.encoder4_3 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 16, init_dim * 16, init_radius * 8, init_sigma * 8, group_norm, config_epn)
+        self.encoder4_1 = ResnetBottleneckBlockEPN('resnetb_strided', init_dim * 8, init_dim * 8, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
+        upscale_curr = upscale_curr * upscale
+        self.encoder4_2 = ResnetBottleneckBlockEPN('resnetb', init_dim * 8, init_dim * 16, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
+        self.encoder4_3 = ResnetBottleneckBlockEPN('resnetb_epn', init_dim * 16, init_dim * 16, init_radius * upscale_curr, init_sigma * upscale_curr, group_norm, config_epn)
         self.equ2inv4 = InvOutBlockEPN('inv_epn', init_dim * 16, config_epn)
 
         self.decoder3 = UnaryBlock(init_dim * 24, init_dim * 8, group_norm)
@@ -39,6 +43,8 @@ class E2PN(nn.Module):
         neighbors_list = data_dict['neighbors']
         subsampling_list = data_dict['subsampling']
         upsampling_list = data_dict['upsampling']
+
+        print(points_list[0].shape, points_list[1].shape, points_list[2].shape, points_list[3].shape)
 
         feats_s1 = feats # N x 1 
         feats_s1 = self.preprocess(feats_s1) # N x kanchor x 1

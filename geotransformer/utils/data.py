@@ -23,6 +23,13 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
     for i in range(num_stages):
         if i > 0:
             points, lengths = grid_subsample(points, lengths, voxel_size=voxel_size)
+        if i == num_stages - 1:
+            if lengths[0] > 2000:
+                points = torch.cat((points[:2000], points[lengths[0]:]), dim=0)
+                lengths[0] = 2000
+            if lengths[1] > 2000:
+                points = torch.cat((points[:lengths[0]], points[lengths[0]:lengths[0]+2000]), dim=0)
+                lengths[1] = 2000
         points_list.append(points)
         lengths_list.append(lengths)
         voxel_size *= 2

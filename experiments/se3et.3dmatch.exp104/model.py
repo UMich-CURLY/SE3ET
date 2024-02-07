@@ -132,15 +132,21 @@ class GeoTransformer(nn.Module):
 
         feats_c = feats_list[-1]
         feats_f = feats_list[0]
+        feats_l1 = feats_list[-2]
 
         # 3. Conditional Transformer
         ref_feats_c = feats_c[:ref_length_c] # N, A, C=1024
         src_feats_c = feats_c[ref_length_c:]
+
+        print('ref_length', ref_length)
+        ref_feats_l1 = feats_l1[:ref_length]
+        src_feats_l1 = feats_l1[ref_length:]
         
         # test similarity   
         from einops import rearrange
-        ref_feats_c_norm = F.normalize(rearrange(ref_feats_c, 'n a c -> a (n c)'), dim=-1)
-        attention_matrix = torch.einsum('ac,ec->ae', ref_feats_c_norm, ref_feats_c_norm)
+        ref_feats_c_norm = F.normalize(rearrange(ref_feats_l1, 'n a c -> a (n c)'), dim=-1)
+        src_feats_c_norm = F.normalize(rearrange(src_feats_l1, 'n a c -> a (n c)'), dim=-1)
+        attention_matrix = torch.einsum('ac,ec->ae', ref_feats_c_norm, src_feats_c_norm)
         print('encoder attention_matrix\n', attention_matrix)
 
         ref_feats_c, src_feats_c, _, _, attn_matrix0, attn_matrix1 = self.transformer(

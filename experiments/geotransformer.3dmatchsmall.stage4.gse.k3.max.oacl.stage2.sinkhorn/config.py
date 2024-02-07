@@ -63,7 +63,7 @@ _C.eval.rte_threshold = 0.3
 _C.ransac = CN()
 _C.ransac.distance_threshold = 0.05
 _C.ransac.num_points = 3
-_C.ransac.num_iterations = 1000 #50000 #1000
+_C.ransac.num_iterations = 50000 #1000
 
 # optim
 _C.optim = CN()

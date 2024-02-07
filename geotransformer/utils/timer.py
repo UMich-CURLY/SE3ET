@@ -5,15 +5,19 @@ class Timer:
     def __init__(self):
         self.total_prepare_time = 0
         self.total_process_time = 0
+        self.total_network_time = 0
         self.count_prepare_time = 0
         self.count_process_time = 0
+        self.count_network_time = 0
         self.last_time = time.time()
 
     def reset(self):
         self.total_prepare_time = 0
         self.total_process_time = 0
+        self.total_network_time = 0
         self.count_prepare_time = 0
         self.count_process_time = 0
+        self.count_network_time = 0
         self.last_time = time.time()
 
     def record_time(self):
@@ -31,11 +35,20 @@ class Timer:
         self.count_process_time += 1
         self.last_time = current_time
 
+    def add_network_time(self):
+        current_time = time.time()
+        self.total_network_time += current_time - self.last_time
+        self.count_network_time += 1
+        self.last_time = current_time
+
     def get_prepare_time(self):
         return self.total_prepare_time / (self.count_prepare_time + 1e-12)
 
     def get_process_time(self):
         return self.total_process_time / (self.count_process_time + 1e-12)
+    
+    def get_network_time(self):
+        return self.total_network_time / (self.count_network_time + 1e-12)
 
     def tostring(self):
         summary = 'time: '
