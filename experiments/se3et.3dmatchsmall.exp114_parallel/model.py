@@ -85,7 +85,11 @@ class SE3ET(nn.Module):
         self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
 
         # Freeze transformer2 when first training
-        self.freeze_module(self.transformer2)
+        # self.freeze_module(self.transformer2)
+
+        # Freeze backbone and transformer1 when second training
+        self.freeze_module(self.backbone)
+        self.freeze_module(self.transformer)
 
     def freeze_module(self, network_module):
         for param in network_module.parameters():
@@ -257,7 +261,7 @@ class SE3ET(nn.Module):
             output_dict['estimated_transform'] = estimated_transform
 
             # 10. Supervise Rotation
-            if self.transformer.supervise_rotation:
+            if self.transformer2.supervise_rotation:
                 rot_sup_attn_matrix = self.rotation_supervision(ref_feats_c_equi, src_feats_c_equi, ref_node_corr_indices, src_node_corr_indices)
                 output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
                 # print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
