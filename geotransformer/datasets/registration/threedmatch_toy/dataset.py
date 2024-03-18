@@ -91,11 +91,11 @@ class ThreeDMatchToySampleDataset(torch.utils.data.Dataset):
         data_dict['overlap'] = metadata['overlap']
 
         # get transformation
-        r = R.from_euler('z', 240, degrees=True)
+        r = R.from_euler('z', 0, degrees=True)
         rotation = r.as_matrix()
         translation = np.zeros((3,))
-        print('rotation\n', rotation)
-        print('translation\n', translation)
+        # print('rotation\n', rotation)
+        # print('translation\n', translation)
 
         # get point cloud (ref and src are the same in this toy sample dataset!)
         ref_points = self._load_point_cloud(metadata['pcd0'])

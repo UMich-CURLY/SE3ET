@@ -204,7 +204,7 @@ class OverallLoss(nn.Module):
 
         if self.supervise_rotation:
             rotation_loss = self.rotation_loss(output_dict, data_dict)
-            loss = self.weight_coarse_loss * coarse_loss + self.weight_fine_loss * fine_loss + self.weight_rotation_loss * rotation_loss
+            loss = self.weight_rotation_loss * rotation_loss
 
             return {
                 'loss': loss,

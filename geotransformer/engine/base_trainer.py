@@ -169,12 +169,14 @@ class BaseTrainer(abc.ABC):
         if 'iteration' in state_dict:
             self.iteration = state_dict['iteration']
             self.logger.info('Iteration has been loaded: {}.'.format(self.iteration))
+        """
         if 'optimizer' in state_dict and self.optimizer is not None:
             self.optimizer.load_state_dict(state_dict['optimizer'])
             self.logger.info('Optimizer has been loaded.')
         if 'scheduler' in state_dict and self.scheduler is not None:
             self.scheduler.load_state_dict(state_dict['scheduler'])
             self.logger.info('Scheduler has been loaded.')
+        """
 
     def register_model(self, model):
         r"""Register model. DDP is automatically used."""
