@@ -1,11 +1,6 @@
-# Geometric Transformer for Fast and Robust Point Cloud Registration
+# SE3ET: SE(3)-Equivariant Transformer for Low-Overlap Point Cloud Registration
 
-We modify the PyTorch implementation of GeoTransformer:
-
-[Geometric Transformer for Fast and Robust Point Cloud Registration](https://arxiv.org/abs/2202.06688).
-
-[Zheng Qin](https://scholar.google.com/citations?user=DnHBAN0AAAAJ), [Hao Yu](https://scholar.google.com/citations?user=g7JfRn4AAAAJ), Changjian Wang, [Yulan Guo](https://scholar.google.com/citations?user=WQRNvdsAAAAJ), Yuxing Peng, and [Kai Xu](https://scholar.google.com/citations?user=GuVkg-8AAAAJ).
-
+This work proposes exploiting equivariant learning from 3D point clouds to improve registration robustness. We propose SE3ET, an SE(3)-equivariant registration framework that employs equivariant point convolution and equivariant transformer design to learn expressive and robust geometric features.
 
 ## Installation
 
@@ -40,11 +35,12 @@ Code has been tested with Ubuntu 20.04, GCC 9.3.0, Python 3.8, PyTorch 1.7.1, CU
 
 ## Pre-trained Weights
 
-We provide pre-trained weights in the [release](https://github.com/qinzheng93/GeoTransformer/releases) page. Please download the latest weights and put them in `weights` directory.
+Upcoming!
+Please download the latest weights and put them in `weights` directory.
 
 ## 3DMatch
 
-### Data preparation
+### Data Preparation
 
 The dataset can be downloaded from [PREDATOR](https://github.com/prs-eth/OverlapPredator). The data should be organized as follows:
 
