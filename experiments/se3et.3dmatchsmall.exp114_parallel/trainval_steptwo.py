@@ -8,7 +8,7 @@ from geotransformer.engine import EpochBasedTrainer
 from config import make_cfg
 from dataset import train_valid_data_loader
 from model import create_model
-from loss import OverallLoss, Evaluator
+from loss import OverallLoss, RotationMatchingLoss, Evaluator
 
 
 class Trainer(EpochBasedTrainer):
@@ -27,6 +27,7 @@ class Trainer(EpochBasedTrainer):
 
         # model, optimizer, scheduler
         model = create_model(cfg).cuda()
+        model = self.register_model(model)
 
         # load checkpoint from step one
         self.load_snapshot(self.args.snapshot)
@@ -35,14 +36,13 @@ class Trainer(EpochBasedTrainer):
         model.unfreeze_module(model.transformer2)
         
         # reset optimizer and scheduler
-        model = self.register_model(model)
         optimizer = optim.Adam(model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
         self.register_optimizer(optimizer)
         scheduler = optim.lr_scheduler.StepLR(optimizer, cfg.optim.lr_decay_steps, gamma=cfg.optim.lr_decay)
         self.register_scheduler(scheduler)
 
         # loss function, evaluator
-        self.loss_func = OverallLoss(cfg).cuda()
+        self.loss_func = RotationMatchingLoss(cfg).cuda()
         self.evaluator = Evaluator(cfg).cuda()
 
     def train_step(self, epoch, iteration, data_dict):

@@ -100,8 +100,10 @@ class SE3ET(nn.Module):
             param.requires_grad = False
     
     def unfreeze_module(self, network_module):
-        for param in network_module.parameters():
-            param.requires_grad_().long()
+        for name, param in network_module.named_parameters():
+            if not (('trace_idx_ori' in name) or ('anchors' in name) or ('trace_idx_rot' in name)):
+                param.requires_grad = True
+                # print(name, param.data, param.requires_grad)
 
     def forward(self, data_dict):
         output_dict = {}
@@ -170,11 +172,13 @@ class SE3ET(nn.Module):
         ref_feats_c = feats_c[:ref_length_c] # N, A, C=1024
         src_feats_c = feats_c[ref_length_c:]
 
-        from einops import rearrange
-        ref_feats_c_norm = F.normalize(rearrange(ref_feats_c, 'n a c -> a (n c)'), dim=-1)
-        src_feats_c_norm = F.normalize(rearrange(src_feats_c, 'n a c -> a (n c)'), dim=-1)
-        attention_matrix = torch.einsum('ac,ec->ae', ref_feats_c_norm, src_feats_c_norm)
-        print('encoder_feat_sim\n', attention_matrix)
+        # Exminate Attention matrix, only for debugging, only work when two inputs have same number of points
+        # from einops import rearrange
+        # ref_feats_c_norm = F.normalize(rearrange(ref_feats_c, 'n a c -> a (n c)'), dim=-1)
+        # src_feats_c_norm = F.normalize(rearrange(src_feats_c, 'n a c -> a (n c)'), dim=-1)
+        # # need point selection here
+        # attention_matrix = torch.einsum('ac,ec->ae', ref_feats_c_norm, src_feats_c_norm)
+        # print('encoder_feat_sim\n', attention_matrix)
 
         ref_feats_c_equi = ref_feats_c
         src_feats_c_equi = src_feats_c
