@@ -93,15 +93,15 @@ class SE3ET(nn.Module):
         # Freeze backbone and transformer1 when second training
         self.freeze_module(self.backbone)
         self.freeze_module(self.transformer)
-        self.defreeze_module(self.transformer2)
+        self.unfreeze_module(self.transformer2)
 
     def freeze_module(self, network_module):
         for param in network_module.parameters():
             param.requires_grad = False
     
-    def defreeze_module(self, network_module):
+    def unfreeze_module(self, network_module):
         for param in network_module.parameters():
-            param.requires_grad = True
+            param.requires_grad_().long()
 
     def forward(self, data_dict):
         output_dict = {}

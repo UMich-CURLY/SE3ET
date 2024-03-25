@@ -32,7 +32,7 @@ class Trainer(EpochBasedTrainer):
         self.load_snapshot(self.args.snapshot)
 
         # reset require_grad
-        model.defreeze_module(model.transformer2)
+        model.unfreeze_module(model.transformer2)
         
         # reset optimizer and scheduler
         model = self.register_model(model)
