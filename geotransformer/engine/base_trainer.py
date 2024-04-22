@@ -163,12 +163,12 @@ class BaseTrainer(abc.ABC):
         self.logger.info('Model has been loaded.')
 
         # Load other attributes
-        if 'epoch' in state_dict:
-            self.epoch = state_dict['epoch']
-            self.logger.info('Epoch has been loaded: {}.'.format(self.epoch))
-        if 'iteration' in state_dict:
-            self.iteration = state_dict['iteration']
-            self.logger.info('Iteration has been loaded: {}.'.format(self.iteration))
+        # if 'epoch' in state_dict:
+        #     self.epoch = state_dict['epoch']
+        #     self.logger.info('Epoch has been loaded: {}.'.format(self.epoch))
+        # if 'iteration' in state_dict:
+        #     self.iteration = state_dict['iteration']
+        #     self.logger.info('Iteration has been loaded: {}.'.format(self.iteration))
         """
         if 'optimizer' in state_dict and self.optimizer is not None:
             self.optimizer.load_state_dict(state_dict['optimizer'])
