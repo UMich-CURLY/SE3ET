@@ -36,7 +36,8 @@ class Trainer(EpochBasedTrainer):
         model.unfreeze_module(model.transformer2)
         
         # reset optimizer and scheduler
-        optimizer = optim.Adam(model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
+        # optimizer = optim.Adam(model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
+        optimizer = optim.SGD(model.parameters(), lr=cfg.optim.lr, momentum=0.9)
         self.register_optimizer(optimizer)
         scheduler = optim.lr_scheduler.StepLR(optimizer, cfg.optim.lr_decay_steps, gamma=cfg.optim.lr_decay)
         self.register_scheduler(scheduler)
