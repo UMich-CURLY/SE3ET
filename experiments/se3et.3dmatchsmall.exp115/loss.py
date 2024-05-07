@@ -183,7 +183,7 @@ class RotationMatchingLoss(nn.Module):
         print('target\n', target)
 
         loss = self.criterion(attn_matrix, target)
-        loss.requires_grad = True
+        # loss.requires_grad = True
 
         return {
                 'loss': loss,
