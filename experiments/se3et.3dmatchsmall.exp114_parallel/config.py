@@ -73,7 +73,7 @@ _C.optim.lr = 1e-4
 _C.optim.lr_decay = 0.95
 _C.optim.lr_decay_steps = 1
 _C.optim.weight_decay = 1e-6
-_C.optim.max_epoch = 80 # 40
+_C.optim.max_epoch = 40
 _C.optim.grad_acc_steps = 1
 
 # model - backbone
@@ -214,7 +214,7 @@ _C.geotransformer2.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft
 _C.geotransformer2.sigma_d = 0.2
 _C.geotransformer2.sigma_a = 15
 _C.geotransformer2.angle_k = 3
-_C.geotransformer2.supervise_rotation = True # False
+_C.geotransformer2.supervise_rotation = False # False
 _C.geotransformer2.reduction_a = 'max'
 _C.geotransformer2.align_mode = '0'
 _C.geotransformer2.alternative_impl = False

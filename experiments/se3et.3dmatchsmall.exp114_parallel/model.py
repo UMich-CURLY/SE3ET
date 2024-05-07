@@ -88,12 +88,12 @@ class SE3ET(nn.Module):
         self.rotation_supervision = RotationAttentionLayer(cfg.geotransformer2.output_dim, cfg.geotransformer.num_heads)
 
         # Freeze transformer2 when first training
-        # self.freeze_module(self.transformer2)
+        self.freeze_module(self.transformer2)
 
         # Freeze backbone and transformer1 when second training
-        self.freeze_module(self.backbone)
-        self.freeze_module(self.transformer)
-        self.unfreeze_module(self.transformer2)
+        # self.freeze_module(self.backbone)
+        # self.freeze_module(self.transformer)
+        # self.unfreeze_module(self.transformer2)
 
     def freeze_module(self, network_module):
         for param in network_module.parameters():
