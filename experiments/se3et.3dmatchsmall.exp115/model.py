@@ -279,12 +279,12 @@ class SE3ET(nn.Module):
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
 
-            # 10. Supervise Rotation
-            if self.transformer2.supervise_rotation:
-                rot_sup_attn_matrix = self.rotation_supervision(ref_feats_c_equi, src_feats_c_equi, ref_node_corr_indices, src_node_corr_indices)
-                output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
-                print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
-                print('transform\n', data_dict['transform'])
+        # 10. Supervise Rotation
+        if self.transformer2.supervise_rotation:
+            rot_sup_attn_matrix = self.rotation_supervision(ref_feats_c_equi, src_feats_c_equi, ref_node_corr_indices, src_node_corr_indices)
+            output_dict['rot_sup_matrix'] = rot_sup_attn_matrix
+            print('rot_sup_attn_matrix\n', rot_sup_attn_matrix)
+            print('transform\n', data_dict['transform'])
 
             torch.cuda.empty_cache()
 

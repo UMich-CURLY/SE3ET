@@ -166,7 +166,7 @@ class RotationMatchingLoss(nn.Module):
 
         # load attention weights from output_dict
         attn_matrix = output_dict['rot_sup_matrix'].squeeze() # 4*4
-        print('attn_matrix\n', attn_matrix.shape, '\n', attn_matrix)
+        # print('attn_matrix\n', attn_matrix.shape, '\n', attn_matrix)
 
         # get ground truth rotation matrix from data_dict
         gt_T0 = data_dict['transform'] # (4, 4)
