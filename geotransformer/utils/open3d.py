@@ -49,7 +49,7 @@ def make_open3d_point_cloud(points, colors=None, normals=None):
 def estimate_normals(points):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.estimate_normals()
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=33)) # follow RoITr
     normals = np.asarray(pcd.normals)
     return normals
 

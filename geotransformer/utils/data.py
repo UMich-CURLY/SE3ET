@@ -5,12 +5,12 @@ import torch
 
 from geotransformer.modules.ops import grid_subsample, radius_search
 from geotransformer.utils.torch import build_dataloader
-
+from geotransformer.utils.open3d import estimate_normals
 
 # Stack mode utilities
 
 
-def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, neighbor_limits):
+def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, neighbor_limits, use_normal=False):
     assert num_stages == len(neighbor_limits)
 
     points_list = []
@@ -18,12 +18,14 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
     neighbors_list = []
     subsampling_list = []
     upsampling_list = []
+    normals_list = []
 
     # grid subsampling
     for i in range(num_stages):
         if i > 0:
             points, lengths = grid_subsample(points, lengths, voxel_size=voxel_size)
         if i == num_stages - 1:
+            # maximum 2000 points for the final stage
             if lengths[0] > 2000:
                 points = torch.cat((points[:2000], points[lengths[0]:]), dim=0)
                 lengths[0] = 2000
@@ -33,6 +35,14 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
         points_list.append(points)
         lengths_list.append(lengths)
         voxel_size *= 2
+
+        # estimate normals
+        if use_normal:
+            ref_point_c = points[:lengths[0]]
+            src_point_c = points[lengths[0]:]
+            ref_normal_c = estimate_normals(ref_point_c)
+            src_normal_c = estimate_normals(src_point_c)
+            normals_list.append(np.concatenate((ref_normal_c, src_normal_c), axis=0))
 
     # radius search
     for i in range(num_stages):
@@ -80,6 +90,7 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
         'neighbors': neighbors_list,
         'subsampling': subsampling_list,
         'upsampling': upsampling_list,
+        'normals': normals_list,
     }
 
 
@@ -143,7 +154,7 @@ def single_collate_fn_stack_mode(
 
 
 def registration_collate_fn_stack_mode(
-    data_dicts, num_stages, voxel_size, search_radius, neighbor_limits, precompute_data=True
+    data_dicts, num_stages, voxel_size, search_radius, neighbor_limits, precompute_data=True, use_normal=False
 ):
     r"""Collate function for registration in stack mode.
 
@@ -177,7 +188,7 @@ def registration_collate_fn_stack_mode(
     points_list = collated_dict.pop('ref_points') + collated_dict.pop('src_points')
     lengths = torch.LongTensor([points.shape[0] for points in points_list])
     points = torch.cat(points_list, dim=0)
-
+    
     if batch_size == 1:
         # remove wrapping brackets if batch_size is 1
         for key, value in collated_dict.items():
@@ -185,7 +196,7 @@ def registration_collate_fn_stack_mode(
 
     collated_dict['features'] = feats
     if precompute_data:
-        input_dict = precompute_data_stack_mode(points, lengths, num_stages, voxel_size, search_radius, neighbor_limits)
+        input_dict = precompute_data_stack_mode(points, lengths, num_stages, voxel_size, search_radius, neighbor_limits, use_normal=use_normal)
         collated_dict.update(input_dict)
     else:
         collated_dict['points'] = points
@@ -196,7 +207,7 @@ def registration_collate_fn_stack_mode(
 
 
 def calibrate_neighbors_stack_mode(
-    dataset, collate_fn, num_stages, voxel_size, search_radius, keep_ratio=0.8, sample_threshold=2000
+    dataset, collate_fn, num_stages, voxel_size, search_radius, keep_ratio=0.8, sample_threshold=2000, use_normal=False
 ):
     # Compute higher bound of neighbors number in a neighborhood
     # calculate number of voxels in this search radius volumn
@@ -209,7 +220,7 @@ def calibrate_neighbors_stack_mode(
     # Get histogram of neighborhood sizes i in 1 epoch max.
     for i in range(len(dataset)):
         data_dict = collate_fn(
-            [dataset[i]], num_stages, voxel_size, search_radius, max_neighbor_limits, precompute_data=True
+            [dataset[i]], num_stages, voxel_size, search_radius, max_neighbor_limits, precompute_data=True, use_normal=use_normal
         )
 
         # update histogram
@@ -251,6 +262,7 @@ def build_dataloader_stack_mode(
     drop_last=False,
     distributed=False,
     precompute_data=True,
+    use_normal=False,
 ):
     dataloader = build_dataloader(
         dataset,
@@ -264,6 +276,7 @@ def build_dataloader_stack_mode(
             search_radius=search_radius,
             neighbor_limits=neighbor_limits,
             precompute_data=precompute_data,
+            use_normal=use_normal,
         ),
         drop_last=drop_last,
         distributed=distributed,

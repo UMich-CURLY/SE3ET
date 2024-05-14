@@ -220,6 +220,8 @@ class GeometricTransformer(nn.Module):
         src_masks=None,
         gt_indices=None,
         gt_overlap=None,
+        ref_normal=None,
+        src_normal=None,
     ):
         r"""Geometric Transformer
 
@@ -241,15 +243,18 @@ class GeometricTransformer(nn.Module):
         attn_matrix1 = None        
 
         if self.n_level_equiv == 0:
+            # not using equivariant embeddings, only geometric embedding
             ref_embeddings = self.embedding(ref_points)
             src_embeddings = self.embedding(src_points)
             ref_eq_embeddings = None
             src_eq_embeddings = None
         else:
+            # equivariant and geometric embedding
             ref_embeddings, ref_eq_embeddings = self.embedding(ref_points)
             src_embeddings, src_eq_embeddings = self.embedding(src_points)
 
         if self.na is None:
+            # non-equivariant
             ref_feats = self.in_proj(ref_feats)
             src_feats = self.in_proj(src_feats)
 
@@ -262,6 +267,8 @@ class GeometricTransformer(nn.Module):
                 masks1=src_masks,
                 gt_indices=gt_indices,
                 gt_overlap=gt_overlap,
+                ref_normal=ref_normal,
+                src_normal=src_normal,
             )
 
             ref_feats = self.out_proj(ref_feats)
@@ -285,6 +292,8 @@ class GeometricTransformer(nn.Module):
                     gt_overlap=gt_overlap,
                     equiv_embed0=ref_eq_embeddings,
                     equiv_embed1=src_eq_embeddings,
+                    ref_normal=ref_normal,
+                    src_normal=src_normal,
                 )
             else:
                 ref_feats, src_feats = self.transformer(
@@ -298,6 +307,8 @@ class GeometricTransformer(nn.Module):
                     gt_overlap=gt_overlap,
                     equiv_embed0=ref_eq_embeddings,
                     equiv_embed1=src_eq_embeddings,
+                    ref_normal=ref_normal,
+                    src_normal=src_normal,
                 )
 
             ref_feats = self.out_proj(ref_feats) # B, N, C

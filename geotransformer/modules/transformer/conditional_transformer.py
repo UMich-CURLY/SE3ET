@@ -7,6 +7,9 @@ from geotransformer.modules.transformer.rpe_transformer import RPETransformerLay
 from geotransformer.modules.transformer.vanilla_transformer import TransformerLayer
 from geotransformer.modules.transformer.output_layer import RotCompressOutput
 
+from sklearn.metrics.pairwise import cosine_similarity
+import geotransformer.modules.transformer.utils_epn.anchors as L
+import numpy as np
 
 def _check_block_type(block):
     # if block not in ['self', 'cross']:
@@ -133,7 +136,22 @@ class RPEConditionalTransformer(nn.Module):
         self.return_attention_weights = return_attention_weights
         self.anchor_matching = anchor_matching
         self.parallel = parallel
+        # initialization of the anchors
+        self.vertices, _, _, _, _ = L.get_octahedron_vertices()
 
+    def eq2inv_normal(self, feats0, feats1, normal0, normal1):
+        ### equivariant to invariant
+        # find nearest anchor from normals in batch
+        similarities0 = cosine_similarity(normal0, self.vertices)
+        anchor_idx0 = np.argmax(similarities0, axis=1) # p,1
+        feats0 = feats0[:, anchor_idx0, :]
+
+        similarities1 = cosine_similarity(normal1, self.vertices)
+        anchor_idx1 = np.argmax(similarities1, axis=1) # p,1
+        feats1 = feats1[:, anchor_idx1, :]
+
+        return feats0, feats1
+    
     def eq2inv_best(self, feats0, feats1, attn_w0, attn_w1, current_layer):
         ### permute
         assert not current_layer.attention.attention.attn_r_multihead, current_layer.attention.attention.attn_r_multihead
@@ -208,7 +226,9 @@ class RPEConditionalTransformer(nn.Module):
             feats1 = feats1_inv
         return feats0, feats1
 
-    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, gt_indices=None, gt_overlap=None, equiv_embed0=None, equiv_embed1=None):
+    def forward(self, feats0, feats1, embeddings0, embeddings1, masks0=None, masks1=None, 
+                gt_indices=None, gt_overlap=None, equiv_embed0=None, equiv_embed1=None, 
+                ref_normal=None, src_normal=None):
         attention_scores = []
         attn_matrix0 = None
         attn_matrix1 = None
@@ -230,10 +250,15 @@ class RPEConditionalTransformer(nn.Module):
                     ### if the next block is cross, need to pool to invariant features
                     feats0_eq = feats0
                     feats1_eq = feats1
-                    # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                    # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
-                    feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
-                    feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
+                    if (ref_normal is not None) and (src_normal is not None):
+                        # use normal for pooling
+                        feats0, feats1 = self.eq2inv_normal(feats0, feats1, ref_normal, src_normal)
+                    else:
+                        # max pool to invariant features
+                        # feats0 = torch.mean(feats0_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        # feats1 = torch.mean(feats1_eq, dim=1, keepdim=False) # bahnc -> bhnc
+                        feats0 = torch.amax(feats0_eq, 1, keepdim=False) # bahnc -> bhnc
+                        feats1 = torch.amax(feats1_eq, 1, keepdim=False) # bahnc -> bhnc
             else:
                 assert 'cross' in block, block
                 if self.parallel:
@@ -302,9 +327,14 @@ class RPEConditionalTransformer(nn.Module):
                         if 'r_best' in block:
                             feats0, feats1 = self.eq2inv_best(feats0, feats1, attn_w0, attn_w1, self.layers[i])
                         else:
-                            feats0_eq = None
-                            feats1_eq = None
-                            feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
+                            # r_soft
+                            if (ref_normal is not None) and (src_normal is not None):
+                                # use normal for pooling
+                                feats0, feats1 = self.eq2inv_normal(feats0, feats1, ref_normal, src_normal)
+                            else:
+                                feats0_eq = None
+                                feats1_eq = None
+                                feats0, feats1 = self.eq2inv_soft(feats0, feats1, attn_w0, attn_w1, self.layers[i])
             if self.return_attention_scores:
                 attention_scores.append([scores0, scores1])
             """

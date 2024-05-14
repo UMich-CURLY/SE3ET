@@ -13,6 +13,7 @@ from geotransformer.modules.kpconv.kernel_points import load_kernels
 # import geotransformer.modules.e2pn.anchors as L
 from geotransformer.modules.e2pn.blocks import radius_gaussian, gather, max_pool, KPConv, GroupNorm
 import torch.nn.functional as F
+from sklearn.metrics.pairwise import cosine_similarity
 
 class KPConvInterSO3(nn.Module):
     def __init__(self, kernel_size, kanchor, in_channels, out_channels, KP_extent, radius,
@@ -919,6 +920,35 @@ class InvOutBlockEPN(nn.Module):
             if self.dual_feature:
                 x_fusion_max = torch.max(x, dim=1, keepdim=False)[0]
                 return x_fusion_max, x_fusion
+        else:
+            x_fusion = torch.max(x, dim=1, keepdim=False)[0]
+            # x_fusion = torch.mean(x, dim=1, keepdim=False)
+        return x_fusion
+    
+class NormalInvOutBlockEPN(nn.Module):
+    def __init__(self, block_name, in_dim, config) -> None:
+        super().__init__()
+        self.block_name = block_name
+        self.in_dim = in_dim # c
+        self.normal_pooling = True
+                        
+        # initialization of the anchors
+        self.vertices, _, _, _, _ = L.get_octahedron_vertices()
+
+    def forward(self, x, q_pts=None, s_pts=None, neighb_inds=None, normals=None):
+        ### x: pac -> pc
+        if self.normal_pooling:
+            # # find nearest anchor from normals in batch, out of memory
+            # similarities = cosine_similarity(normals, self.vertices)
+            # anchor_idx = np.argmax(similarities, axis=1) # p,1
+            # x_fusion = x[:, anchor_idx, :]
+            
+            # find nearest anchor from normals in loop
+            x_fusion = torch.zeros_like(x[:,0,:])
+            for i in range(x.shape[0]):
+                similarities = cosine_similarity(normals[i].reshape(1,-1), self.vertices)
+                anchor_idx = np.argmax(similarities)
+                x_fusion[i] = x[i, anchor_idx, :]
         else:
             x_fusion = torch.max(x, dim=1, keepdim=False)[0]
             # x_fusion = torch.mean(x, dim=1, keepdim=False)
