@@ -41,11 +41,11 @@ _C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 20000 # random select if number of points is larger than point_limit
+_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
-_C.train.use_normal = True
+_C.train.use_normal = True # Use point normal to find the closest anchor for pooling to invariant
 
 # test data
 _C.test = edict()
@@ -195,7 +195,8 @@ _C.geotransformer.hidden_dim = 256
 _C.geotransformer.output_dim = 256
 _C.geotransformer.num_heads = 4
 # _C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
-_C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross', 'self', 'cross', 'self', 'cross']
+# _C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross', 'self', 'cross', 'self', 'cross']
+_C.geotransformer.blocks = ['self_eq', 'cross', 'self_eq', 'cross', 'self_eq', 'cross']
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3
@@ -205,6 +206,7 @@ _C.geotransformer.align_mode = '0'
 _C.geotransformer.alternative_impl = False
 _C.geotransformer.n_level_equiv = 0
 _C.geotransformer.attn_r_positive = 'softplus' # 'sq', 'abs', 'sigmoid', 'leakyrelu', None
+_C.geotransformer.attn_r_positive_rot_supervise = 'minus' # 'leakyrelu', 'softplus', 'minus', None
 
 # model - Fine Matching
 _C.fine_matching = edict()

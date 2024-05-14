@@ -45,6 +45,8 @@ class GeoTransformer(nn.Module):
             supervise_rotation=cfg.geotransformer.supervise_rotation,
             reduction_a=cfg.geotransformer.reduction_a,
             na=cfg.epn.kanchor,
+            attn_r_positive=cfg.geotransformer.attn_r_positive,
+            attn_r_positive_rot_supervise=cfg.geotransformer.attn_r_positive_rot_supervise,
             align_mode=cfg.geotransformer.align_mode,
             alternative_impl=cfg.geotransformer.alternative_impl,
             n_level_equiv=cfg.geotransformer.n_level_equiv,
@@ -71,11 +73,10 @@ class GeoTransformer(nn.Module):
         )
 
         self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
-
+ 
         # print('backbone num_param', count_parameters(self.backbone))
         # print('transformer num_param', count_parameters(self.transformer))
         
-
     def forward(self, data_dict):
         output_dict = {}
 
@@ -89,6 +90,7 @@ class GeoTransformer(nn.Module):
         points_c = data_dict['points'][-1].detach()
         points_f = data_dict['points'][1].detach()
         points = data_dict['points'][0].detach()
+        normals_c = data_dict['normals'][3].detach()
 
         ref_points_c = points_c[:ref_length_c]
         src_points_c = points_c[ref_length_c:]
@@ -96,6 +98,9 @@ class GeoTransformer(nn.Module):
         src_points_f = points_f[ref_length_f:]
         ref_points = points[:ref_length]
         src_points = points[ref_length:]
+
+        ref_normals_c = normals_c[:ref_length_c]
+        src_normals_c = normals_c[ref_length_c:]
 
         output_dict['ref_points_c'] = ref_points_c
         output_dict['src_points_c'] = src_points_c
@@ -142,11 +147,13 @@ class GeoTransformer(nn.Module):
         # 3. Conditional Transformer
         ref_feats_c = feats_c[:ref_length_c] # N, A, C=1024
         src_feats_c = feats_c[ref_length_c:]
-        ref_feats_c, src_feats_c, _, _, attn_matrix0, attn_matrix1 = self.transformer(
+        ref_feats_c, src_feats_c, ref_feats_m, src_feats_m, attn_matrix0, attn_matrix1 = self.transformer(
             ref_points_c.unsqueeze(0),
             src_points_c.unsqueeze(0),
             ref_feats_c.unsqueeze(0),
             src_feats_c.unsqueeze(0),
+            ref_normal=ref_normals_c,
+            src_normal=src_normals_c,
         ) # B, N/M, C=256
 
         output_dict['attn_matrix0'] = attn_matrix0
@@ -222,7 +229,8 @@ class GeoTransformer(nn.Module):
             output_dict['src_corr_points'] = src_corr_points
             output_dict['corr_scores'] = corr_scores
             output_dict['estimated_transform'] = estimated_transform
-            torch.cuda.empty_cache()
+            
+        torch.cuda.empty_cache()
 
         return output_dict
 
