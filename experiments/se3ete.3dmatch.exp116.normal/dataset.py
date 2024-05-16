@@ -24,7 +24,6 @@ def train_valid_data_loader(cfg, distributed):
         cfg.backbone.init_voxel_size,
         cfg.backbone.init_radius,
         use_normal=cfg.train.use_normal,
-        use_normal=cfg.train.use_normal,
     )
     train_loader = build_dataloader_stack_mode(
         train_dataset,
