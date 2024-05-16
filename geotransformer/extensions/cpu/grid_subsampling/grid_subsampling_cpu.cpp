@@ -3,6 +3,8 @@
 void single_grid_subsampling_cpu(
   std::vector<PointXYZ>& points,
   std::vector<PointXYZ>& s_points,
+  std::vector<PointXYZ>& normals,
+  std::vector<PointXYZ>& s_normals,
   float voxel_size
 ) {
 //  float sub_scale = 1. / voxel_size;
@@ -27,7 +29,10 @@ void single_grid_subsampling_cpu(
   std::unordered_map<std::size_t, SampledListPoints> data_choose;
 
 
-  for (auto& p : points) {
+  // for (auto& p : points) {
+  for (int i = 0; i < points.size(); i++) {
+    PointXYZ p = points[i];
+    PointXYZ n = normals[i];
 //    iX = static_cast<std::size_t>(floor((p.x - originCorner.x) * sub_scale));
 //    iY = static_cast<std::size_t>(floor((p.y - originCorner.y) * sub_scale));
 //    iZ = static_cast<std::size_t>(floor((p.z - originCorner.z) * sub_scale));
@@ -46,7 +51,7 @@ void single_grid_subsampling_cpu(
       data_choose.emplace(mapIdx, SampledListPoints());
     }
 
-    data_choose[mapIdx].update(p);
+    data_choose[mapIdx].update(p, n);
   }
 
   s_points.reserve(data.size());
@@ -55,8 +60,13 @@ void single_grid_subsampling_cpu(
   //   s_points.push_back(v.second.point * (1.0 / v.second.count));
   // }
   // choose the point closest to the average
+  PointXYZ closestPoint = PointXYZ();
+  PointXYZ closestNormal = PointXYZ();
+
   for (auto& v : data_choose) {
-    s_points.push_back(v.second.choose());
+    v.second.choose(closestPoint, closestNormal);
+    s_points.push_back(closestPoint);
+    s_normals.push_back(closestNormal);
   }
 }
 
@@ -65,6 +75,8 @@ void grid_subsampling_cpu(
   std::vector<PointXYZ>& s_points,
   std::vector<long>& lengths,
   std::vector<long>& s_lengths,
+  std::vector<PointXYZ>& normals,
+  std::vector<PointXYZ>& s_normals,
   float voxel_size
 ) {
   std::size_t start_index = 0;
@@ -76,9 +88,18 @@ void grid_subsampling_cpu(
     );
     std::vector<PointXYZ> cur_s_points;
 
-    single_grid_subsampling_cpu(cur_points, cur_s_points, voxel_size);
+    std::vector<PointXYZ> cur_normals = std::vector<PointXYZ>(
+      normals.begin() + start_index,
+      normals.begin() + start_index + lengths[b]
+    );
+    std::vector<PointXYZ> cur_s_normals;
+
+    single_grid_subsampling_cpu(cur_points, cur_s_points, cur_normals, cur_s_normals, voxel_size);
 
     s_points.insert(s_points.end(), cur_s_points.begin(), cur_s_points.end());
+
+    s_normals.insert(s_normals.end(), cur_s_normals.begin(), cur_s_normals.end());
+
     s_lengths.push_back(cur_s_points.size());
 
     start_index += lengths[b];

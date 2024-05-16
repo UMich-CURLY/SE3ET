@@ -20,29 +20,39 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
     upsampling_list = []
     normals_list = []
 
+    # estimate normals for initial point clouds
+    if use_normal:
+        ref_point_c = points[:lengths[0]]
+        src_point_c = points[lengths[0]:]
+        ref_normal_c = torch.from_numpy(estimate_normals(ref_point_c))
+        src_normal_c = torch.from_numpy(estimate_normals(src_point_c))
+        normals = np.concatenate((ref_normal_c, src_normal_c), axis=0)
+        normals_list.append(normals)
+
     # grid subsampling
     for i in range(num_stages):
         if i > 0:
-            points, lengths = grid_subsample(points, lengths, voxel_size=voxel_size)
+            points, lengths, normals = grid_subsample(points, lengths, normals, voxel_size=voxel_size)
+            if use_normal:
+                normals_list.append(normals)
         if i == num_stages - 1:
             # maximum 2000 points for the final stage
             if lengths[0] > 2000:
                 points = torch.cat((points[:2000], points[lengths[0]:]), dim=0)
+                if use_normal:
+                    normals = torch.cat((normals[:2000], normals[lengths[0]:]), dim=0)
                 lengths[0] = 2000
             if lengths[1] > 2000:
                 points = torch.cat((points[:lengths[0]], points[lengths[0]:lengths[0]+2000]), dim=0)
+                if use_normal:
+                    normals = torch.cat((normals[:lengths[0]], normals[lengths[0]:lengths[0]+2000]), dim=0)
                 lengths[1] = 2000
         points_list.append(points)
         lengths_list.append(lengths)
-        voxel_size *= 2
-
-        # estimate normals
         if use_normal:
-            ref_point_c = points[:lengths[0]]
-            src_point_c = points[lengths[0]:]
-            ref_normal_c = estimate_normals(ref_point_c)
-            src_normal_c = estimate_normals(src_point_c)
-            normals_list.append(np.concatenate((ref_normal_c, src_normal_c), axis=0))
+            normals_list.append(normals)
+        voxel_size *= 2
+       
 
     # radius search
     for i in range(num_stages):
