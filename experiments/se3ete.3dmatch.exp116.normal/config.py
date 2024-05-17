@@ -205,6 +205,7 @@ _C.geotransformer.align_mode = '0'
 _C.geotransformer.alternative_impl = False
 _C.geotransformer.n_level_equiv = 0
 _C.geotransformer.attn_r_positive = 'softplus' # 'sq', 'abs', 'sigmoid', 'leakyrelu', None
+_C.geotransformer.attn_r_positive_rot_supervise = 'minus' # 'leakyrelu', 'softplus', 'minus', None
 
 # model - Fine Matching
 _C.fine_matching = edict()
