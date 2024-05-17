@@ -26,7 +26,7 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
         src_point_c = points[lengths[0]:]
         ref_normal_c = torch.from_numpy(estimate_normals(ref_point_c))
         src_normal_c = torch.from_numpy(estimate_normals(src_point_c))
-        normals = np.concatenate((ref_normal_c, src_normal_c), axis=0)
+        normals = torch.cat((ref_normal_c, src_normal_c), 0)
 
     # grid subsampling
     for i in range(num_stages):
