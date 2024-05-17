@@ -140,17 +140,21 @@ class RPEConditionalTransformer(nn.Module):
         self.vertices, _, _, _, _ = L.get_octahedron_vertices()
 
     def eq2inv_normal(self, feats0, feats1, normal0, normal1):
-        ### equivariant to invariant
+        ### equivariant to invariant, banc->bnc
         # find nearest anchor from normals in batch
         similarities0 = cosine_similarity(normal0, self.vertices)
         anchor_idx0 = np.argmax(similarities0, axis=1) # p,1
-        feats0 = feats0[:, anchor_idx0, :]
+        feats0_out = torch.empty_like(feats0[:,0,:,:])
+        for i in range(feats0.shape[2]):
+            feats0_out[:, i, :] = feats0[:, anchor_idx0[i], i, :]
 
         similarities1 = cosine_similarity(normal1, self.vertices)
         anchor_idx1 = np.argmax(similarities1, axis=1) # p,1
-        feats1 = feats1[:, anchor_idx1, :]
+        feats1_out = torch.empty_like(feats1[:,0,:,:])
+        for i in range(feats1.shape[2]):
+            feats1_out[:, i, :] = feats1[:, anchor_idx1[i], i, :]
 
-        return feats0, feats1
+        return feats0_out, feats1_out
     
     def eq2inv_best(self, feats0, feats1, attn_w0, attn_w1, current_layer):
         ### permute
@@ -251,7 +255,7 @@ class RPEConditionalTransformer(nn.Module):
                     feats0_eq = feats0
                     feats1_eq = feats1
                     if (ref_normal is not None) and (src_normal is not None):
-                        # use normal for pooling
+                        # use normal for pooling, banc->bnc 
                         feats0, feats1 = self.eq2inv_normal(feats0, feats1, ref_normal, src_normal)
                     else:
                         # max pool to invariant features

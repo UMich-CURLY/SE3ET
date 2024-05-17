@@ -946,7 +946,7 @@ class NormalInvOutBlockEPN(nn.Module):
             # find nearest anchor from normals in loop
             x_fusion = torch.zeros_like(x[:,0,:])
             for i in range(x.shape[0]):
-                similarities = cosine_similarity(normals[i].numpy().reshape(1,-1), self.vertices)
+                similarities = cosine_similarity(normals[i].cpu().numpy().reshape(1,-1), self.vertices)
                 anchor_idx = np.argmax(similarities)
                 x_fusion[i] = x[i, anchor_idx, :]
         else:

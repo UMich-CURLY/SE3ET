@@ -17,8 +17,8 @@ _C.working_dir = osp.dirname(osp.realpath(__file__))
 _C.root_dir = osp.dirname(osp.dirname(_C.working_dir))
 _C.cluster_dir = '/scratch/maanigj_root/maanigj0/chienerh/SE3ET'
 _C.exp_name = osp.basename(_C.working_dir)
-# _C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
-_C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
+_C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
+# _C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
 _C.snapshot_dir = osp.join(_C.output_dir, 'snapshots')
 _C.log_dir = osp.join(_C.output_dir, 'logs')
 _C.event_dir = osp.join(_C.output_dir, 'events')
@@ -34,8 +34,8 @@ ensure_dir(_C.registration_dir)
 
 # data
 _C.data = edict()
-# _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
-_C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
+_C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
+# _C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
 
 # train data
 _C.train = edict()
@@ -45,7 +45,7 @@ _C.train.point_limit = 10000 # random select if number of points is larger than 
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
-_C.train.use_normal = True # Use point normal to find the closest anchor for pooling to invariant
+_C.train.use_normal = False # compute normal for input data # Use point normal to find the closest anchor for pooling to invariant
 
 # test data
 _C.test = edict()
