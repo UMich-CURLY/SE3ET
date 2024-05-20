@@ -138,21 +138,23 @@ class RPEConditionalTransformer(nn.Module):
         self.parallel = parallel
         # initialization of the anchors
         self.vertices, _, _, _, _ = L.get_octahedron_vertices()
+        self.vertices = torch.from_numpy(self.vertices).float().cuda() # 6,3
 
     def eq2inv_normal(self, feats0, feats1, normal0, normal1):
         ### equivariant to invariant, banc->bnc
         # find nearest anchor from normals in batch
-        similarities0 = cosine_similarity(normal0, self.vertices)
-        anchor_idx0 = np.argmax(similarities0, axis=1) # p,1
-        feats0_out = torch.empty_like(feats0[:,0,:,:])
-        for i in range(feats0.shape[2]):
-            feats0_out[:, i, :] = feats0[:, anchor_idx0[i], i, :]
-
-        similarities1 = cosine_similarity(normal1, self.vertices)
-        anchor_idx1 = np.argmax(similarities1, axis=1) # p,1
-        feats1_out = torch.empty_like(feats1[:,0,:,:])
-        for i in range(feats1.shape[2]):
-            feats1_out[:, i, :] = feats1[:, anchor_idx1[i], i, :]
+        with torch.no_grad():
+            # for feat0, obtain index of the nearest anchor
+            similarities0 = normal0 @ self.vertices.t() # (n,3) @ (3,6) -> (n,6)
+            anchor_idx0 = torch.argmax(similarities0, axis=1) # n
+            n_index0 = torch.arange(feats0.shape[2], device=feats0.device)
+            # for feat1, obtain index of the nearest anchor
+            similarities1 = normal1 @ self.vertices.t() # (n,3) @ (3,6) -> (n,6)
+            anchor_idx1 = torch.argmax(similarities1, axis=1) # n
+            n_index1 = torch.arange(feats1.shape[2], device=feats1.device)
+        
+        feats0_out = feats0[:, anchor_idx0, n_index0] # banc->bnc
+        feats1_out = feats1[:, anchor_idx1, n_index1] # banc->bnc
 
         return feats0_out, feats1_out
     

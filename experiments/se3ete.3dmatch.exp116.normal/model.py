@@ -90,7 +90,7 @@ class GeoTransformer(nn.Module):
         points_c = data_dict['points'][-1].detach()
         points_f = data_dict['points'][1].detach()
         points = data_dict['points'][0].detach()
-        normals_c = data_dict['normals'][-1].detach().cpu()
+        normals_c = data_dict['normals'][-1].detach()
 
         ref_points_c = points_c[:ref_length_c]
         src_points_c = points_c[ref_length_c:]

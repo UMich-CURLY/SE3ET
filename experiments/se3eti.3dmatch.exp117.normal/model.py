@@ -152,8 +152,6 @@ class GeoTransformer(nn.Module):
             src_points_c.unsqueeze(0),
             ref_feats_c.unsqueeze(0),
             src_feats_c.unsqueeze(0),
-            ref_normal=ref_normals_c,
-            src_normal=src_normals_c,
         ) # B, N/M, C=256
 
         output_dict['attn_matrix0'] = attn_matrix0

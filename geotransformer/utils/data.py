@@ -31,7 +31,6 @@ def precompute_data_stack_mode(points, lengths, num_stages, voxel_size, radius, 
     for i in range(num_stages):
         if i > 0:
             points, lengths, normals = grid_subsample(points, lengths, normals, voxel_size=voxel_size)
-            normals_list.append(normals)
         if i == num_stages - 1:
             # maximum 2000 points for the final stage
             if lengths[0] > 2000:
