@@ -17,8 +17,8 @@ _C.working_dir = osp.dirname(osp.realpath(__file__))
 _C.root_dir = osp.dirname(osp.dirname(_C.working_dir))
 _C.cluster_dir = '/scratch/maanigj_root/maanigj0/chienerh/SE3ET'
 _C.exp_name = osp.basename(_C.working_dir)
-# _C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
-_C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
+_C.output_dir = osp.join(_C.root_dir, 'output', _C.exp_name)
+# _C.output_dir = osp.join(_C.cluster_dir, 'output', _C.exp_name)
 _C.snapshot_dir = osp.join(_C.output_dir, 'snapshots')
 _C.log_dir = osp.join(_C.output_dir, 'logs')
 _C.event_dir = osp.join(_C.output_dir, 'events')
@@ -34,18 +34,18 @@ ensure_dir(_C.registration_dir)
 
 # data
 _C.data = edict()
-# _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
-_C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
+_C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
+# _C.data.dataset_root = osp.join(_C.cluster_dir, 'data', '3DMatch')
 
 # train data
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 30000 # random select if number of points is larger than point_limit
+_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
-_C.train.use_normal = True
+_C.train.use_normal = False # compute normal for input data # Use point normal to find the closest anchor for pooling to invariant
 
 # test data
 _C.test = edict()
@@ -66,7 +66,7 @@ _C.eval.rte_threshold = 0.3
 _C.ransac = edict()
 _C.ransac.distance_threshold = 0.05
 _C.ransac.num_points = 3
-_C.ransac.num_iterations = 50000 # 1000
+_C.ransac.num_iterations = 1000 # 50000 # 1000
 
 # optim
 _C.optim = edict()
@@ -86,10 +86,10 @@ _C.backbone.base_radius = 2.5
 _C.backbone.base_sigma = 2.0
 _C.backbone.init_radius = _C.backbone.base_radius * _C.backbone.init_voxel_size
 _C.backbone.init_sigma = _C.backbone.base_sigma * _C.backbone.init_voxel_size
-_C.backbone.group_norm = 32
+_C.backbone.group_norm = 16
 _C.backbone.input_dim = 1
-_C.backbone.init_dim = 64
-_C.backbone.output_dim = 256
+_C.backbone.init_dim = 32
+_C.backbone.output_dim = 128
 
 
 # epn
@@ -195,7 +195,8 @@ _C.geotransformer.hidden_dim = 256
 _C.geotransformer.output_dim = 256
 _C.geotransformer.num_heads = 4
 # _C.geotransformer.blocks = ['self', 'cross', 'self', 'cross', 'self', 'cross']
-_C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross', 'self', 'cross', 'self', 'cross']
+# _C.geotransformer.blocks = ['self_eq', 'cross_a_soft', 'self_eq', 'cross_r_soft', 'self', 'cross', 'self', 'cross', 'self', 'cross']
+_C.geotransformer.blocks = ['self_eq', 'cross', 'self_eq', 'cross', 'self_eq', 'cross']
 _C.geotransformer.sigma_d = 0.2
 _C.geotransformer.sigma_a = 15
 _C.geotransformer.angle_k = 3

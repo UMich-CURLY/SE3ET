@@ -38,7 +38,7 @@ _C.data.dataset_root = osp.join(_C.root_dir, 'data', '3DMatch')
 _C.train = edict()
 _C.train.batch_size = 1
 _C.train.num_workers = 8
-_C.train.point_limit = 10000 # random select if number of points is larger than point_limit
+_C.train.point_limit = 30000 # random select if number of points is larger than point_limit
 _C.train.use_augmentation = True
 _C.train.augmentation_noise = 0.005
 _C.train.augmentation_rotation = 1.0
@@ -63,7 +63,7 @@ _C.eval.rte_threshold = 0.3
 _C.ransac = edict()
 _C.ransac.distance_threshold = 0.05
 _C.ransac.num_points = 3
-_C.ransac.num_iterations = 50000 # 1000
+_C.ransac.num_iterations = 1000 # 50000 # 1000
 
 # optim
 _C.optim = edict()
