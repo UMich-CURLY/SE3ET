@@ -140,21 +140,37 @@ class RPEConditionalTransformer(nn.Module):
         self.vertices, _, _, _, _ = L.get_octahedron_vertices()
         self.vertices = torch.from_numpy(self.vertices).float().cuda() # 6,3
 
-    def eq2inv_normal(self, feats0, feats1, normal0, normal1):
+    def eq2inv_normal(self, feats0, feats1, normal0, normal1, weighted=True):
         ### equivariant to invariant, banc->bnc
         # find nearest anchor from normals in batch
         with torch.no_grad():
             # for feat0, obtain index of the nearest anchor
             similarities0 = normal0 @ self.vertices.t() # (n,3) @ (3,6) -> (n,6)
-            anchor_idx0 = torch.argmax(similarities0, axis=1) # n
-            n_index0 = torch.arange(feats0.shape[2], device=feats0.device)
+            if weighted:
+                anchor_weights0 = torch.sigmoid(similarities0) # n,a
+                anchor_weights0 = torch.permute(anchor_weights0, (1,0)).unsqueeze(0).unsqueeze(-1) # b,a,n,1
+            else:
+                anchor_idx0 = torch.argmax(similarities0, axis=1) # n
+                n_index0 = torch.arange(feats0.shape[2], device=feats0.device)
+            
             # for feat1, obtain index of the nearest anchor
             similarities1 = normal1 @ self.vertices.t() # (n,3) @ (3,6) -> (n,6)
-            anchor_idx1 = torch.argmax(similarities1, axis=1) # n
-            n_index1 = torch.arange(feats1.shape[2], device=feats1.device)
+            if weighted:
+                anchor_weights1 = torch.sigmoid(similarities1) # n,a
+                anchor_weights1 = torch.permute(anchor_weights1, (1,0)).unsqueeze(0).unsqueeze(-1) # b,a,n,1
+            else:
+                anchor_idx1 = torch.argmax(similarities1, axis=1) # n
+                n_index1 = torch.arange(feats1.shape[2], device=feats1.device)
         
-        feats0_out = feats0[:, anchor_idx0, n_index0] # banc->bnc
-        feats1_out = feats1[:, anchor_idx1, n_index1] # banc->bnc
+        if weighted:
+            weighted_feats0 = feats0 * anchor_weights0 # pac * pa1 -> pac
+            feats0_out = weighted_feats0.sum(dim=1) # pac -> pc
+
+            weighted_feats1 = feats1 * anchor_weights1 # pac * pa1 -> pac
+            feats1_out = weighted_feats1.sum(dim=1) # pac -> pc
+        else:
+            feats0_out = feats0[:, anchor_idx0, n_index0] # banc->bnc
+            feats1_out = feats1[:, anchor_idx1, n_index1] # banc->bnc
 
         return feats0_out, feats1_out
     

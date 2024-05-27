@@ -955,6 +955,40 @@ class NormalInvOutBlockEPN(nn.Module):
             x_fusion = torch.max(x, dim=1, keepdim=False)[0]
             # x_fusion = torch.mean(x, dim=1, keepdim=False)
         return x_fusion
+    
+class NormalWeightedInvOutBlockEPN(nn.Module):
+    def __init__(self, block_name, in_dim, config) -> None:
+        super().__init__()
+        self.block_name = block_name
+        self.in_dim = in_dim # c
+                        
+        # initialization of the anchors
+        self.vertices, _, _, _, _ = L.get_octahedron_vertices()
+        self.vertices = torch.from_numpy(self.vertices).float().cuda() # 6,3
+
+    def forward(self, x, q_pts=None, s_pts=None, neighb_inds=None, normals=None):
+        ### x: pac -> pc, normals: p,3
+        if normals is not None:
+            # find nearest anchor from normals in batch, out of memory
+            with torch.no_grad():
+                similarities = normals @ self.vertices.t() # (p,3) @ (3,6) -> (p,6)
+                anchor_weights = torch.sigmoid(similarities).unsqueeze(-1) # p,a,1
+                weighted_x = x * anchor_weights # pac * pa1 -> pac
+                # anchor_idx = torch.argmax(similarities, axis=1) # p
+                # p_index = torch.arange(x.shape[0], device=x.device)
+            x_fusion = weighted_x.sum(dim=1) # pac -> pc
+            
+            # # find nearest anchor from normals in loop
+            # x_fusion = torch.zeros_like(x[:,0,:])
+            # for i in range(x.shape[0]):
+            #     similarities = cosine_similarity(normals[i].cpu().numpy().reshape(1,-1), self.vertices)
+            #     anchor_idx = np.argmax(similarities)
+            #     x_fusion[i] = x[i, anchor_idx, :]
+        else:
+            x_fusion = torch.max(x, dim=1, keepdim=False)[0]
+            # x_fusion = torch.mean(x, dim=1, keepdim=False)
+        return x_fusion
+
 
 class LiftBlockEPN(nn.Module):
     def __init__(self, block_name, in_dim, config):
