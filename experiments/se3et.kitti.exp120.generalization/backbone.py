@@ -44,8 +44,6 @@ class E2PN(nn.Module):
         subsampling_list = data_dict['subsampling']
         upsampling_list = data_dict['upsampling']
 
-        print(points_list[0].shape, points_list[1].shape, points_list[2].shape, points_list[3].shape)
-
         feats_s1 = feats # N x 1 
         feats_s1 = self.preprocess(feats_s1) # N x kanchor x 1
         feats_s1 = self.encoder1_1(feats_s1, points_list[0], points_list[0], neighbors_list[0]) # N x kanchor x init_dim
