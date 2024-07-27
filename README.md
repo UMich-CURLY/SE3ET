@@ -1,6 +1,6 @@
 # SE3ET: SE(3)-Equivariant Transformer for Low-Overlap Point Cloud Registration
 
-[Paper](http://arxiv.org/abs/2407.16823)
+[Paper Link](http://arxiv.org/abs/2407.16823)
 
 This work proposes exploiting equivariant learning from 3D point clouds to improve registration robustness. We propose SE3ET, an SE(3)-equivariant registration framework that employs equivariant point convolution and equivariant transformer design to learn expressive and robust geometric features.
 
