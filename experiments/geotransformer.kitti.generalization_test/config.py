@@ -65,7 +65,7 @@ _C.eval.rte_threshold = 0.2
 # ransac
 _C.ransac = edict()
 _C.ransac.distance_threshold = 0.03 # 0.1 scale of 0.3 threshold for kitti
-_C.ransac.num_points = 3
+_C.ransac.num_points = 4
 _C.ransac.num_iterations = 50000
 
 # optim

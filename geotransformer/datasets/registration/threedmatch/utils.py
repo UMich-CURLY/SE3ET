@@ -11,6 +11,7 @@ from geotransformer.utils.pointcloud import (
     get_nearest_neighbor,
 )
 from geotransformer.utils.registration import compute_overlap, compute_registration_error
+from scipy.spatial.transform import Rotation   
 
 _scene_name_to_num_fragments = {
     '7-scenes-redkitchen': 60,
@@ -134,7 +135,6 @@ def compute_transform_error(transform, covariance, estimated_transform):
     er = np.concatenate([t, q[1:]], axis=0)
     p = er.reshape(1, 6) @ covariance @ er.reshape(6, 1) / covariance[0, 0]
     return p.item()
-
 
 def evaluate_registration_one_scene(gt_log_file, gt_info_file, result_file, positive_threshold=0.2):
     registration_meter = SummaryBoard(['rre', 'rte'])

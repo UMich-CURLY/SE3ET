@@ -4,6 +4,18 @@
 
 This work proposes exploiting equivariant learning from 3D point clouds to improve registration robustness. We propose SE3ET, an SE(3)-equivariant registration framework that employs equivariant point convolution and equivariant transformer design to learn expressive and robust geometric features.
 
+```
+@article{lin2024se3et,
+  title={SE3ET: SE(3)-Equivariant Transformer for Low-Overlap Point Cloud Registration},
+  author={Lin, Chien Erh and Zhu, Minghan and Ghaffari, Maani},
+  journal={IEEE Robotics and Automation Letters},
+  year={2024},
+  publisher={IEEE}
+}
+```
+![](assets/SE3ET_qualitative_result.png)
+![](assets/se3et_framework.png)
+
 ## Installation
 
 Please use the following command for installation.
@@ -23,11 +35,11 @@ pip install torch==1.7.1+cu110 -f https://download.pytorch.org/whl/torch_stable.
 pip install -r requirements.txt
 
 ```
-Build extension package for GeoTransformer (might need root access)
+Build extension package (might need root access)
 ```
 python setup.py build develop
 ```
-Build extension package for E2PN
+Build extension package for E2PN (might need root access)
 ```
 cd geotransformer/modules/e2pn/vgtk
 python setup.py build_ext -i
@@ -36,89 +48,57 @@ python setup.py build_ext -i
 Code has been tested with Ubuntu 20.04, GCC 9.3.0, Python 3.8, PyTorch 1.7.1, CUDA 11.1 and cuDNN 8.1.0.
 
 ## Pre-trained Weights
+Upcoming! (I plan to upload the pretrain weights in August, 2024. If it didn't happen, feel free to email me.)
+Please download the weights and put them in `weights` directory.
 
-Upcoming!
-Please download the latest weights and put them in `weights` directory.
+## Which model to use? SE3ET-E vs. SE3ET-I
+TL;DR: We suggest you to use SE3ET-E if the input point cloud is small (<10k points) and use SE3ET-I if the input point cloud is large (>10k points). 
+
+In the paper, we propose two transformer configurations. **SE3ET-E** contains all the equivariant and invariant self-attention and cross-attention we proposed, and **SE3ET-I** contains equivariant self-attention and invariant cross-attention. The first one provides better performance on low-overlap and random rotation cases but higher on memory consumption. The latter one maintain good performance while keeping lower memory consumption. We suggest you use SE3ET-E if the input point cloud is small (<10k points) and use SE3ET-I if the input point cloud is large (>10k points). We also provide SE3ET-E2 and SE3ET-I2 which the feature size is 2x smaller to boost computation performance. Please check the paper for their performance comparison.
 
 ## 3DMatch
 
 ### Data Preparation
 
-The dataset can be downloaded from [PREDATOR](https://github.com/prs-eth/OverlapPredator). The data should be organized as follows:
-
-```text
---data--3DMatch--metadata
-              |--data--train--7-scenes-chess--cloud_bin_0.pth
-                    |      |               |--...
-                    |      |--...
-                    |--test--7-scenes-redkitchen--cloud_bin_0.pth
-                          |                    |--...
-                          |--...
-```
-
-You may create symlink at `data/3DMatch/data` to the actual dataset path, and symlink at `output` to the path you want to save outputs and log files. 
+The dataset can be downloaded from [PREDATOR](https://github.com/prs-eth/OverlapPredator). Check out [PREDATOR](https://github.com/prs-eth/OverlapPredator) and [GeoTransformer](https://github.com/qinzheng93/GeoTransformer) repositories for preparing data.
 
 ### Training
 
-The code for 3DMatch is in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn`. Use the following command for training.
+The code for 3DMatch is in `experiments/se3ete.3dmatch` for SE3ET-E and `experiments/se3eti.3dmatch` for SE3ET-I. Inside the folder, change `config.py` accordingly. Then, use the following command for training.
 
-```bash
+```
 CUDA_VISIBLE_DEVICES=0 python trainval.py
 ```
-#### Training with E2PN
-
-The code for 3DMatch is in `experiments/e2pntransformer.3dmatchsmall.inv.exp4`. Use the following command for training.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python trainval.py
-```
-For experiment, you can copy the `experiments/e2pntransformer.3dmatchsmall.inv.exp4` folder or create a new folder under `experiments`. Inside the folder, change `config.py` and `backbone.py` accordingly. If GPU memory is limited, lower `train.point_limit`, `test.point_limit`, `backbone.init_dim`, `backbone.output_dim`, `geotransformer.input_dim`, `geotransformer.hidden_dim`, `geotransformer.output_dim`.
-
-For invariant feature encoder, `geotransformer.blocks` is set as `['self', 'cross', 'self', 'cross', 'self', 'cross']` and the initialization of the `GeometricTransformer` in `model.py` doesn't include `kanchor` arguement. 
 
 ### Testing
-
-Use the following command for testing.
-
-```bash
-# 3DMatch
-CUDA_VISIBLE_DEVICES=0 ./eval.sh EPOCH 3DMatch
-# 3DLoMatch
-CUDA_VISIBLE_DEVICES=0 ./eval.sh EPOCH 3DLoMatch
+Command to generate features from point clouds
+```
+CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/se3ete.3dmatch.pth.tar --benchmark=3DMatch
+CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/se3ete.3dmatch.pth.tar --benchmark=3DLoMatch
 ```
 
-`EPOCH` is the epoch id.
-
-We also provide pretrained weights in `weights`, use the following command to test the pretrained weights.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/geotransformer-3dmatch.pth.tar --benchmark=3DMatch
+Command to run feature matching and registration
+```
+CUDA_VISIBLE_DEVICES=0 python eval.py --num_corr=5000 --benchmark=3DMatch --method=ransac
+```
+or 
+```
 CUDA_VISIBLE_DEVICES=0 python eval.py --benchmark=3DMatch --method=lgr
 ```
 
-Replace `3DMatch` with `3DLoMatch` to evaluate on 3DLoMatch.
+### Testing with Random Rotation
+TODO
 
-Use `--cfg_file` option to point to a `yaml` config file to override the options in `experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn/config.py`. 
 
-## Kitti odometry
+## KITTI Point Cloud Pairs
 
 ### Data preparation
 
-Download the data from the [Kitti official website](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) into `data/Kitti` and run `data/Kitti/downsample_pcd.py` to generate the data. The data should be organized as follows:
-
-```text
---data--Kitti--metadata
-            |--sequences--00--velodyne--000000.bin
-            |              |         |--...
-            |              |...
-            |--downsampled--00--000000.npy
-                         |   |--...
-                         |--...
-```
+Download the data from the [Kitti official website](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) into `data/Kitti` and run `data/Kitti/downsample_pcd.py` to generate the data. 
 
 ### Training
 
-The code for Kitti is in `experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn`. Use the following command for training.
+The code for Kitti is in `experiments/se3eti.kitti`. Use the following command for training.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python trainval.py
@@ -129,66 +109,18 @@ CUDA_VISIBLE_DEVICES=0 python trainval.py
 Use the following command for testing.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 ./eval.sh EPOCH
-```
-
-`EPOCH` is the epoch id.
-
-We also provide pretrained weights in `weights`, use the following command to test the pretrained weights.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/geotransformer-kitti.pth.tar
+CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/se3eti.kitti.pth.tar
 CUDA_VISIBLE_DEVICES=0 python eval.py --method=lgr
 ```
 
-## ModelNet
+### Testing with Random Rotation
+TODO
 
-### Data preparation
-
-Download the [data](https://shapenet.cs.stanford.edu/media/modelnet40_ply_hdf5_2048.zip) and run `data/ModelNet/split_data.py` to generate the data. The data should be organized as follows:
-
-```text
---data--ModelNet--modelnet_ply_hdf5_2048--...
-               |--train.pkl
-               |--val.pkl
-               |--test.pkl
-```
-
-### Training
-
-The code for ModelNet is in `experiments/geotransformer.modelnet.rpmnet.stage4.gse.k3.max.oacl.stage2.sinkhorn`. Use the following command for training.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python trainval.py
-```
-
-### Testing
-
-Use the following command for testing.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python test.py --test_iter=ITER
-```
-
-`ITER` is the iteration id.
-
-We also provide pretrained weights in `weights`, use the following command to test the pretrained weights.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python test.py --snapshot=../../weights/geotransformer-modelnet.pth.tar
-```
-
-## Multi-GPU Training
-
-As the point clouds usually have different sizes, we organize them in the *pack* mode. This causes difficulty for batch training as we need to convert the data between *batch* mode and *pack* mode frequently. For this reason, we limit the batch size to 1 per GPU at this time and support batch training via `DistributedDataParallel`. Use `torch.distributed.launch` for multi-gpu training:
-
-```bash
-CUDA_VISIBLE_DEVICES=GPUS python -m torch.distributed.launch --nproc_per_node=NGPUS trainval.py
-```
-
-Note that the learning rate is multiplied by the number of GPUs by default as the batch size increased. In our experiments, multi-gpu training slightly improves the performance.
+## Generalization Test
+TODO
 
 ## Acknowledgements
 - [GeoTransformer](https://github.com/qinzheng93/GeoTransformer)
+- [E2PN](https://github.com/minghanz/E2PN)
 
-We thank the authors for open sourcing their methods, the code is heavily borrowed from [GeoTransformer](https://github.com/qinzheng93/GeoTransformer)
+We thank the authors for open sourcing their methods, the code is heavily borrowed from [GeoTransformer](https://github.com/qinzheng93/GeoTransformer) and [E2PN](https://github.com/minghanz/E2PN).
